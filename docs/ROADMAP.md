@@ -21,7 +21,7 @@ Issue 明细见 [issues/](issues/)，标签体系：`area/core` `area/cli`
 
 **目标**：让「已有碎片」自动变成经历草稿，冷启动不再痛苦。
 
-- #006 Connector 框架（Extractor 协议 + 注册表 + `import` 命令）
+- ✅ #006 Connector 框架（Extractor 协议 + 注册表 + `import` 命令）
 - #007 GitHub 导入器（仓库 / commit / PR / issue → 草稿 + 证据）
 - #008 本地 git 仓库分析器（log / 语言统计 → 草稿 + 证据）
 - #009 简历导入器（Markdown / 纯文本解析，PDF 依赖 M2 的 AI 提取）

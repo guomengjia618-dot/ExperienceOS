@@ -8,6 +8,7 @@ on core, never the other way around.
 from experienceos.core.errors import (
     AIProviderError,
     AmbiguousIdError,
+    ConnectorError,
     ExperienceOSError,
     NotFoundError,
     NotInitializedError,
@@ -31,6 +32,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "AIProviderError",
     "AmbiguousIdError",
+    "ConnectorError",
     "Evidence",
     "EvidenceKind",
     "Experience",

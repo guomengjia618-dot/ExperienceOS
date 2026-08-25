@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Connector framework (#006): `Extractor` protocol, `ExperienceDraft`
+  (forced `status=draft` + mandatory provenance), `scheme:payload` source
+  routing with Windows-drive-letter safety, name-keyed registry, and the
+  `experienceos import` command (preview confirmation, never overwrites
+  existing records).
+
 ## [0.1.0] - 2026-08-25
 
 First public foundation release (Milestone 0).

@@ -40,6 +40,10 @@ class StorageError(ExperienceOSError):
     """The local storage layer could not read or write a record."""
 
 
+class ConnectorError(ExperienceOSError):
+    """A connector (import source) is unknown, misconfigured, or failed."""
+
+
 class NotInitializedError(ExperienceOSError):
     """The ExperienceOS home directory has not been initialized."""
 

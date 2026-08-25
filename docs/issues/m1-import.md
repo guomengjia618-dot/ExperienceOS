@@ -3,7 +3,7 @@
 > 用户故事总纲：作为开发者，我已经有 GitHub 仓库、本地代码和一份旧简历，
 > 我希望 ExperienceOS 自动把它们变成**草稿**经历，而不是让我从零手填。
 
-## #006 Connector 框架
+## #006 Connector 框架 ✅ 2026-08-25
 
 **Labels**: `area/connector` `area/core` · P0 · intermediate
 
@@ -13,18 +13,18 @@
 
 ### 验收标准
 
-- [ ] `experienceos.connectors.base.Extractor` 协议：
+- [x] `experienceos.connectors.base.Extractor` 协议：
       `name: str`、`can_handle(source: str) -> bool`、
       `extract(source: str) -> Iterator[ExperienceDraft]`
-- [ ] `ExperienceDraft` 是带校验的草稿类型：底层是 `Experience.new()`
+- [x] `ExperienceDraft` 是带校验的草稿类型：底层是 `Experience.new()`
       产出（`status=draft`、`source.origin` 正确、evidence 尽量自动挂）
-- [ ] 注册表 `registry.py`：`register(extractor)` + `get(name)` +
+- [x] 注册表 `registry.py`：`register(extractor)` + `get(name)` +
       `find_handler(source)`，重复注册报错
-- [ ] CLI：`experienceos import <source>`（如 `github:owner/repo`、
+- [x] CLI：`experienceos import <source>`（如 `github:owner/repo`、
       `path/to/repo`、`resume:cv.md`），草稿落盘后打印 id 列表与
       `show <id>` 提示
-- [ ] 草稿永远不会覆盖已有记录（id 冲突时报错）
-- [ ] 单元测试覆盖协议、注册表与 import 命令（fake extractor）
+- [x] 草稿永远不会覆盖已有记录（id 冲突时报错）
+- [x] 单元测试覆盖协议、注册表与 import 命令（fake extractor）
 
 ### 技术说明
 

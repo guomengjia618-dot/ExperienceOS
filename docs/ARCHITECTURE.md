@@ -128,6 +128,7 @@ CLI 接受任意唯一前缀（`exp_01H` 或 `01H`），`ExperienceStore.resolve
 src/experienceos/
   core/         # 领域层：models.py / ulid.py / errors.py
   storage/      # store.py（文件仓库）/ query.py（查询引擎）
+  connectors/   # base.py（Extractor 协议+草稿）/ registry.py（路由注册表）
   ai/           # provider.py（协议）/ prompts.py（版本化模板）
   cli/          # app.py（命令）/ render.py（rich 渲染）
   config.py     # home 解析 + config.toml 读写

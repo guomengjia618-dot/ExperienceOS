@@ -24,10 +24,12 @@ from rich.console import Console
 from experienceos import __version__
 from experienceos.cli import render
 from experienceos.config import load_config, resolve_home, save_config
+from experienceos.connectors import default_registry
 from experienceos.core.errors import (
     ExperienceOSError,
     NotFoundError,
     NotInitializedError,
+    StorageError,
     ValidationError,
 )
 from experienceos.core.models import (
@@ -194,6 +196,52 @@ def add(ctx: typer.Context) -> None:
         raise typer.Exit()
     saved = store.save(experience)
     console.print(f"[green]Saved[/green] {experience.id} -> {saved}")
+
+
+@app.command("import")
+@_friendly_errors
+def import_cmd(
+    ctx: typer.Context,
+    source: str = typer.Argument(
+        ...,
+        help="Source to import: github:owner/repo, resume:cv.md, or a local path.",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Save drafts without the preview confirmation."
+    ),
+) -> None:
+    """Turn an external source into experience drafts (status=draft).
+
+    Importing never overwrites existing records and never marks drafts as
+    confirmed — refine them with `set`/`add-item`/`edit`, then
+    `set <id> status active`.
+    """
+    store = _get_store(ctx)
+    extractor = default_registry.find_handler(source)
+    drafts = list(extractor.extract(source))
+    if not drafts:
+        console.print(f"Connector '{extractor.name}' produced no drafts for {source!r}.")
+        raise typer.Exit()
+
+    for draft in drafts:
+        render.render_experience(console, draft.experience)
+    if not yes and not typer.confirm(f"Save {len(drafts)} draft(s)?", default=True):
+        console.print("Discarded.")
+        raise typer.Exit()
+
+    saved_ids: list[str] = []
+    for draft in drafts:
+        if store.exists(draft.experience.id):
+            raise StorageError(
+                f"record id conflict: {draft.experience.id} already exists "
+                "(import never overwrites records)"
+            )
+        store.save(draft.experience)
+        saved_ids.append(draft.experience.id)
+
+    console.print(f"[green]Saved[/green] {len(saved_ids)} draft(s) via '{extractor.name}':")
+    for exp_id in saved_ids:
+        console.print(f"  experienceos show {render.short_id(exp_id)}   # {exp_id}")
 
 
 @app.command("list")
