@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "exp_01JZFAKE000000000000000000",
+  "title": "基于倒排索引的校园文档搜索引擎（毕业设计）",
+  "type": "graduation_project",
+  "period": { "start": "2024-12", "end": "2025-06" },
+  "context": "毕业设计选题：校园内各部门文档分散、检索困难，导师要求单人完成可演示的检索系统。",
+  "role": "独立开发者（设计与实现全部工作）",
+  "description": "为约 2 万篇校园文档构建的轻量级中文搜索引擎，包含爬取、清洗、索引与查询服务。",
+  "technology": ["Python", "jieba", "Whoosh", "FastAPI", "SQLite"],
+  "contribution": [
+    "设计文档流水线：抓取、去重、正文抽取与增量索引",
+    "实现 jieba 自定义词典 + BM25 混合排序的检索接口",
+    "搭建 FastAPI 查询服务与评测脚本"
+  ],
+  "challenge": [
+    "长文档下默认分词导致召回率低（top-10 命中率仅 61%）"
+  ],
+  "solution": [
+    "构建校园领域自定义词典，并对标题字段加权，召回率提升至 92%"
+  ],
+  "result": [
+    "top-10 命中率 61% -> 92%（自建 200 条查询评测集）",
+    "单机 P95 查询延迟 45ms（2 万篇文档）"
+  ],
+  "reflection": "第一次为检索系统建立完整评测集，体会到没有评测就无法证明任何优化。",
+  "evidence": [
+    {
+      "id": "ev_a1b2c3d4e5f6",
+      "kind": "repo",
+      "location": "github.com/yourname/campus-search",
+      "description": "毕业设计源码仓库"
+    },
+    {
+      "id": "ev_b2c3d4e5f6a1",
+      "kind": "doc",
+      "location": "docs/thesis.pdf",
+      "description": "毕业论文（含评测章节）"
+    }
+  ],
+  "tags": ["ir", "backend", "graduation"],
+  "status": "active",
+  "source": {
+    "origin": "manual",
+    "ref": null,
+    "created_by": "user",
+    "created_at": "2026-08-25T10:00:00+00:00"
+  },
+  "created_at": "2026-08-25T10:00:00+00:00",
+  "updated_at": "2026-08-25T10:00:00+00:00"
+}
