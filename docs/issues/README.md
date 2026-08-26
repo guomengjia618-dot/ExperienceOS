@@ -14,7 +14,7 @@
 | Milestone | 文件 | 状态 |
 | --- | --- | --- |
 | M0 基础 | [m0-foundation.md](m0-foundation.md) | ✅ 全部完成（v0.1.0） |
-| M1 导入 | [m1-import.md](m1-import.md) | 🚧 待开工 |
+| M1 导入 | [m1-import.md](m1-import.md) | 🚧 #006–#007 已完成 |
 | M2 智能 | [m2-intelligence.md](m2-intelligence.md) | 待开工 |
 | M3 输出 | [m3-output.md](m3-output.md) | 待开工 |
 | M4 平台 | [m4-platform.md](m4-platform.md) | 待开工 |

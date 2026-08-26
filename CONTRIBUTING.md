@@ -9,7 +9,7 @@
 git clone https://github.com/experienceos/experienceos.git
 cd experienceos
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e ".[dev,ai]"
+pip install -e ".[dev,ai,github]"
 ```
 
 常用命令（无需 make）：
