@@ -65,6 +65,17 @@ class Extractor(Protocol):
         ...
 
 
+@runtime_checkable
+class AuthoredExtractor(Protocol):
+    """Optional capability for sources that can filter activity by author."""
+
+    def extract_for_author(
+        self, source: str, author: str
+    ) -> Iterator[ExperienceDraft]:
+        """Yield drafts containing only activity attributed to *author*."""
+        ...
+
+
 @dataclass(frozen=True)
 class ExperienceDraft:
     """A validated, not-yet-confirmed experience record from a connector."""
