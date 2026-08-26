@@ -35,7 +35,7 @@ ExperienceOS 要做的事情只有一件：**把这些碎片转化为有证据�
 ```bash
 # 需要 Python 3.10+
 python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
+pip install -e ".[dev,github]"
 
 experienceos init          # 初始化 ~/.experienceos
 experienceos add           # 交互式录入第一条经历
@@ -43,6 +43,25 @@ experienceos list          # 浏览全部经历
 experienceos search "搜索引擎 inverted index"
 experienceos show exp_01H  # ID 前缀即可定位
 ```
+
+### 导入 GitHub 经历
+
+公开仓库可以显式指定贡献者，无需 token：
+
+```bash
+experienceos import github:owner/repo --author username
+```
+
+省略 `--author` 时，通过 `GITHUB_TOKEN` 获取当前认证用户；token 只从环境
+变量读取，不写入配置或经历文件：
+
+```bash
+export GITHUB_TOKEN=...  # PowerShell: $env:GITHUB_TOKEN="..."
+experienceos import github:owner/repo
+```
+
+导入结果始终为 `status=draft`，预览确认后才保存。GitHub 功能使用独立
+`[github]` extra，不增加核心安装的运行时依赖。
 
 ## Experience 数据模型
 
@@ -94,6 +113,7 @@ experienceos show exp_01H  # ID 前缀即可定位
 src/experienceos/
   core/        # 领域模型：Experience / Evidence / Source + ULID + 错误体系
   storage/     # 文件存储层（原子写、损坏容忍）+ 内存查询引擎
+  connectors/  # GitHub / 本地 Git / 简历等导入器
   ai/          # LLM Provider 协议 + 版本化 Prompt 模板（M2 完善）
   cli/         # typer 命令行界面
   config.py    # home 目录与 config.toml

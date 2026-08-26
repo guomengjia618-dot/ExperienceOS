@@ -132,12 +132,13 @@ src/experienceos/
   ai/           # provider.py（协议）/ prompts.py（版本化模板）
   cli/          # app.py（命令）/ render.py（rich 渲染）
   config.py     # home 解析 + config.toml 读写
-tests/          # 单元 + CLI 端到端（95 个用例）
+tests/          # 单元 + CLI 端到端（含离线 GitHub API fixtures）
 docs/           # 架构 / 路线图 / Issue 拆分
 ```
 
 ## 6. 配置与安全
 
 - Home 解析优先级：`--home` > `$EXPERIENCEOS_HOME` > `~/.experienceos`。
-- API key 永不落盘：config.toml 只存 `api_key_env`（环境变量名）。
+- API key / `GITHUB_TOKEN` 永不落盘：config.toml 只存 `api_key_env`（环境变量名），
+  GitHub token 仅从环境变量读取。
 - `.gitignore` 排除 `.experienceos/`，防止个人知识库被误提交。

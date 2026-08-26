@@ -31,7 +31,7 @@
 `source` 用 `scheme:payload` 形式路由；无 scheme 视为本地路径。import
 是**纯写入草稿**，不做 AI 提炼（那是 M2 的事），保证行为可预测。
 
-## #007 GitHub 导入器
+## #007 GitHub 导入器 ✅ 2026-08-26
 
 **Labels**: `area/connector` · P0 · advanced
 
@@ -42,22 +42,22 @@ commit / PR / issue，生成一份有证据的草稿。
 
 ### 验收标准
 
-- [ ] `experienceos import github:owner/repo [--author <user>]`，
+- [x] `experienceos import github:owner/repo [--author <user>]`，
       author 默认取 authenticated user
-- [ ] 采集：仓库元信息（语言、描述、时间窗）、`?author=` 的 commit 列表、
+- [x] 采集：仓库元信息（语言、描述、时间窗）、`?author=` 的 commit 列表、
       该作者的 PR 与 issue
-- [ ] 产出：technology 取 repo languages；contribution 取 commit/PR 主题
+- [x] 产出：technology 取 repo languages；contribution 取 commit/PR 主题
       去重后的摘要行；evidence 自动挂 repo / commit / pull_request
-- [ ] `GITHUB_TOKEN` 环境变量认证；无 token 时的公开仓库限流要有清晰
+- [x] `GITHUB_TOKEN` 环境变量认证；无 token 时的公开仓库限流要有清晰
       错误信息
-- [ ] 分页拉全（per_page=100 + Link header 跟随）；网络错误转为
+- [x] 分页拉全（per_page=100 + Link header 跟随）；网络错误转为
       `ExperienceOSError` 子类
-- [ ] 离线 fixture 测试（responses/recordings），CI 不打真实 API
+- [x] 离线 fixture 测试（responses/recordings），CI 不打真实 API
 
 ### 技术说明
 
-用 `httpx`（已在 `[ai]` extra，考虑挪到新的 `[github]` extra 或核心依赖，
-在 PR 中决策并记录）。绝不捏造数字：commit 数、PR 数来自 API 计数。
+`httpx` 放在独立 `[github]` extra 中，并由 Connector 延迟导入，因此核心安装
+不增加网络依赖。绝不捏造数字：commit 数、PR 数来自 API 计数。
 
 ## #008 本地 git 仓库分析器
 
