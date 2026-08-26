@@ -24,7 +24,7 @@ from rich.console import Console
 from experienceos import __version__
 from experienceos.cli import render
 from experienceos.config import load_config, resolve_home, save_config
-from experienceos.connectors import default_registry
+from experienceos.connectors import AuthoredExtractor, default_registry
 from experienceos.core.errors import (
     ExperienceOSError,
     NotFoundError,
@@ -116,7 +116,7 @@ def root(
         help="Show version and exit.",
     ),
 ) -> None:
-    """ExperienceOS — your personal experience operating system."""
+    """ExperienceOS - your personal experience operating system."""
     ctx.obj = home
 
 
@@ -209,16 +209,28 @@ def import_cmd(
     yes: bool = typer.Option(
         False, "--yes", "-y", help="Save drafts without the preview confirmation."
     ),
+    author: str | None = typer.Option(
+        None,
+        "--author",
+        help="Filter source activity by author (GitHub and future git connectors).",
+    ),
 ) -> None:
     """Turn an external source into experience drafts (status=draft).
 
     Importing never overwrites existing records and never marks drafts as
-    confirmed — refine them with `set`/`add-item`/`edit`, then
+    confirmed; refine them with `set`/`add-item`/`edit`, then
     `set <id> status active`.
     """
     store = _get_store(ctx)
     extractor = default_registry.find_handler(source)
-    drafts = list(extractor.extract(source))
+    if author is not None:
+        if not isinstance(extractor, AuthoredExtractor):
+            raise ValidationError(
+                f"connector '{extractor.name}' does not support --author"
+            )
+        drafts = list(extractor.extract_for_author(source, author))
+    else:
+        drafts = list(extractor.extract(source))
     if not drafts:
         console.print(f"Connector '{extractor.name}' produced no drafts for {source!r}.")
         raise typer.Exit()
@@ -409,7 +421,7 @@ def edit(ctx: typer.Context, id: str = typer.Argument(...)) -> None:
         updated = Experience.from_dict(json.loads(scratch.read_text(encoding="utf-8")))
     except (PydanticValidationError, ValueError) as exc:
         err_console.print(f"[red]Invalid JSON, not saved.[/red] {exc}")
-        err_console.print(f"Your edits are kept at {scratch} — fix and rerun `edit`.")
+        err_console.print(f"Your edits are kept at {scratch}; fix and rerun `edit`.")
         raise typer.Exit(code=1) from exc
     if updated.id != full_id:
         scratch.unlink(missing_ok=True)
@@ -426,7 +438,7 @@ def delete(
     id: str = typer.Argument(...),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
-    """Delete an experience (moves nothing to trash — this is final)."""
+    """Delete an experience (moves nothing to trash; this is final)."""
     store = _get_store(ctx)
     full_id = store.resolve(id)
     experience = store.load(full_id)
@@ -452,19 +464,19 @@ def stats(ctx: typer.Context) -> None:
         return
     with_evidence = sum(1 for e in experiences if e.evidence)
     console.print(
-        f"[bold]{len(experiences)}[/bold] experiences · "
-        f"evidence coverage [bold]{with_evidence / len(experiences):.0%}[/bold] · "
+        f"[bold]{len(experiences)}[/bold] experiences | "
+        f"evidence coverage [bold]{with_evidence / len(experiences):.0%}[/bold] | "
         f"with reflection: "
         f"{sum(1 for e in experiences if e.reflection) / len(experiences):.0%}"
     )
     type_counts = Counter(e.type.value for e in experiences)
-    console.print("By type: " + " · ".join(f"{k} {v}" for k, v in type_counts.most_common()))
+    console.print("By type: " + " | ".join(f"{k} {v}" for k, v in type_counts.most_common()))
     status_counts = Counter(e.status.value for e in experiences)
-    console.print("By status: " + " · ".join(f"{k} {v}" for k, v in status_counts.most_common()))
+    console.print("By status: " + " | ".join(f"{k} {v}" for k, v in status_counts.most_common()))
     tech_counts = Counter(t.casefold() for e in experiences for t in e.technology)
     if tech_counts:
         console.print(
-            "Top technologies: " + " · ".join(k for k, _ in tech_counts.most_common(10))
+            "Top technologies: " + " | ".join(k for k, _ in tech_counts.most_common(10))
         )
 
 
