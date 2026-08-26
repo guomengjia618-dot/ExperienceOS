@@ -9,11 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- GitHub importer (#007): authenticated-user or explicit-author activity
+  import, repository languages, paginated commits/PRs/issues, evidence-backed
+  drafts, actionable authentication/rate-limit errors, and offline API fixtures.
 - Connector framework (#006): `Extractor` protocol, `ExperienceDraft`
   (forced `status=draft` + mandatory provenance), `scheme:payload` source
   routing with Windows-drive-letter safety, name-keyed registry, and the
   `experienceos import` command (preview confirmation, never overwrites
   existing records).
+
+### Fixed
+
+- Experience detail rendering now uses ASCII-safe list/evidence markers and
+  folds long evidence URLs correctly on Windows GBK consoles.
 
 ## [0.1.0] - 2026-08-25
 
