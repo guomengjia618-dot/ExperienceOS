@@ -33,6 +33,7 @@ dependencies = [
 
 [project.optional-dependencies]
 ai = ["httpx>=0.27"]
+github = ["httpx>=0.27"]
 dev = ["pytest>=8.0", "ruff>=0.4"]
 
 [project.urls]

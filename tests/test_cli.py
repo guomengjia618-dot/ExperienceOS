@@ -97,6 +97,26 @@ def test_list_and_show(cli_env: Any, make_experience) -> None:
     assert exp_id in shown.output
 
 
+
+
+def test_show_uses_ascii_safe_rendering(cli_env: Any, make_experience) -> None:
+    exp_id = seed(
+        cli_env,
+        make_experience,
+        contribution=["Built the connector"],
+        evidence=[{"kind": "repo", "location": "https://github.com/octo/demo"}],
+    )
+
+    shown = runner.invoke(app, ["show", exp_id[:12]])
+
+    assert shown.exit_code == 0
+    assert "- Built the connector" in shown.output
+    assert "repo: https://github.com/octo/demo" in shown.output
+    assert "manual | created_by user" in shown.output
+    assert "•" not in shown.output
+    assert "·" not in shown.output
+
+
 def test_search_ranks_and_filters(cli_env: Any, make_experience) -> None:
     seed(cli_env, make_experience, title="Ranking Star", tags=["searchable"])
     seed(cli_env, make_experience, title="Other", description="mentions ranking deep inside")

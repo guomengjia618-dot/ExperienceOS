@@ -1,0 +1,74 @@
+{
+  "user": {
+    "login": "octocat"
+  },
+  "repository": {
+    "name": "demo",
+    "full_name": "octo/demo",
+    "html_url": "https://github.com/octo/demo",
+    "description": "A fixture-backed demo repository",
+    "private": false,
+    "license": {
+      "key": "mit",
+      "name": "MIT License"
+    },
+    "created_at": "2023-12-01T00:00:00Z",
+    "pushed_at": "2024-05-20T00:00:00Z",
+    "updated_at": "2024-05-21T00:00:00Z"
+  },
+  "languages": {
+    "Python": 9000,
+    "Shell": 1000
+  },
+  "commits_page_1": [
+    {
+      "sha": "1111111111111111111111111111111111111111",
+      "html_url": "https://github.com/octo/demo/commit/1111111",
+      "commit": {
+        "message": "Build connector\n\nDetailed body",
+        "author": {
+          "date": "2024-01-10T12:00:00Z"
+        }
+      }
+    },
+    {
+      "sha": "2222222222222222222222222222222222222222",
+      "html_url": "https://github.com/octo/demo/commit/2222222",
+      "commit": {
+        "message": "build connector",
+        "author": {
+          "date": "2024-02-12T12:00:00Z"
+        }
+      }
+    }
+  ],
+  "commits_page_2": [
+    {
+      "sha": "3333333333333333333333333333333333333333",
+      "html_url": "https://github.com/octo/demo/commit/3333333",
+      "commit": {
+        "message": "Add tests",
+        "author": {
+          "date": "2024-03-15T12:00:00Z"
+        }
+      }
+    }
+  ],
+  "issues": [
+    {
+      "number": 7,
+      "title": "Add pagination",
+      "html_url": "https://github.com/octo/demo/pull/7",
+      "created_at": "2024-04-01T08:00:00Z",
+      "pull_request": {
+        "url": "https://api.github.com/repos/octo/demo/pulls/7"
+      }
+    },
+    {
+      "number": 8,
+      "title": "Document rate limits",
+      "html_url": "https://github.com/octo/demo/issues/8",
+      "created_at": "2024-05-02T08:00:00Z"
+    }
+  ]
+}

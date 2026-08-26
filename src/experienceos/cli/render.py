@@ -18,7 +18,7 @@ def short_id(experience_id: str) -> str:
 def render_experience(console: Console, exp: Experience) -> None:
     body = Table.grid(padding=(0, 2))
     body.add_column(style="dim", justify="right")
-    body.add_column()
+    body.add_column(overflow="fold")
 
     body.add_row("id", exp.id)
     body.add_row("type", exp.type.value)
@@ -37,18 +37,18 @@ def render_experience(console: Console, exp: Experience) -> None:
         ("result", exp.result),
     ):
         if items:
-            body.add_row(label, "\n".join(f"• {item}" for item in items))
+            body.add_row(label, "\n".join(f"- {item}" for item in items))
     if exp.reflection:
         body.add_row("reflection", exp.reflection)
 
     if exp.evidence:
         body.add_row(
             "evidence",
-            "\n".join(f"[{ev.kind.value}] {ev.location}" for ev in exp.evidence),
+            "\n".join(f"{ev.kind.value}: {ev.location}" for ev in exp.evidence),
         )
     body.add_row(
         "source",
-        f"{exp.source.origin.value} · created_by {exp.source.created_by}",
+        f"{exp.source.origin.value} | created_by {exp.source.created_by}",
     )
     console.print(Panel(body, title=f"{exp.title}", expand=False))
 

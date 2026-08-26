@@ -186,7 +186,7 @@ class TestImportCommand:
         assert ExperienceStore(cli_env).list_all() == []
 
     def test_import_unknown_source_fails_cleanly(self, cli_env) -> None:
-        result = runner.invoke(app, ["import", "github:o/r"])
+        result = runner.invoke(app, ["import", "resume:cv.md"])
         assert result.exit_code == 1
         assert "no registered connector" in full_output(result)
 
