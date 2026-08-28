@@ -140,7 +140,9 @@ def init(ctx: typer.Context) -> None:
 @_friendly_errors
 def path(ctx: typer.Context) -> None:
     """Print the active home directory."""
-    console.print(str(resolve_home(ctx.obj)))
+    # soft_wrap: the whole point is a copy-pastable path; wrapping at the
+    # console width would corrupt it on narrow terminals (and CI runners).
+    console.print(str(resolve_home(ctx.obj)), soft_wrap=True)
 
 
 def _prompt_month(label: str, allow_empty: bool = False) -> str | None:
