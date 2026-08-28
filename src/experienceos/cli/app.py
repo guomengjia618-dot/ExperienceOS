@@ -12,8 +12,11 @@ import json
 import os
 import shlex
 import subprocess
+import tempfile
+import time
 from collections import Counter
 from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +25,14 @@ from pydantic import ValidationError as PydanticValidationError
 from rich.console import Console
 
 from experienceos import __version__
+from experienceos.ai.demo import build_recorded_demo_provider
+from experienceos.ai.evaluation import run_evaluation, save_evaluation_report
+from experienceos.ai.factory import create_provider
+from experienceos.ai.provider import LLMProvider, Message, complete_structured
+from experienceos.ai.reporting import build_run_report, save_run_report
+from experienceos.ai.schemas import ProviderHealth
+from experienceos.ai.tools import ExperienceToolRegistry
+from experienceos.ai.workflow import EvidenceBriefWorkflow, WorkflowCheckpointStore
 from experienceos.cli import render
 from experienceos.config import load_config, resolve_home, save_config
 from experienceos.connectors import AuthoredExtractor, default_registry
@@ -31,6 +42,7 @@ from experienceos.core.errors import (
     NotInitializedError,
     StorageError,
     ValidationError,
+    WorkflowError,
 )
 from experienceos.core.models import (
     Experience,
@@ -46,8 +58,20 @@ app = typer.Typer(
     "your personal experience assets.",
     no_args_is_help=True,
 )
+ai_app = typer.Typer(help="Real-model checks, evidence briefs, and evaluations.")
+app.add_typer(ai_app, name="ai")
 console = Console()
 err_console = Console(stderr=True)
+
+_REPOSITORY_EVAL_DATASET = (
+    Path(__file__).resolve().parents[3] / "evals" / "experience_brief.jsonl"
+)
+_PACKAGED_EVAL_DATASET = Path(__file__).resolve().parents[1] / "ai" / "eval_cases.jsonl"
+_DEFAULT_EVAL_DATASET = (
+    _REPOSITORY_EVAL_DATASET
+    if _REPOSITORY_EVAL_DATASET.is_file()
+    else _PACKAGED_EVAL_DATASET
+)
 
 _LIST_FIELDS = {"technology", "tags", "contribution", "challenge", "solution", "result"}
 _SET_TARGETS = {
@@ -98,6 +122,34 @@ def _get_store(ctx: typer.Context) -> ExperienceStore:
 
 def _load_by_prefix(store: ExperienceStore, prefix: str) -> Experience:
     return store.load(store.resolve(prefix))
+
+
+def _configured_provider(ctx: typer.Context) -> LLMProvider:
+    home = resolve_home(ctx.obj)
+    return create_provider(load_config(home).ai)
+
+
+def _render_workflow_state(
+    state: Any,
+    checkpoints: WorkflowCheckpointStore,
+    report_path: Path,
+) -> None:
+    console.print(f"[green]Workflow {state.status}[/green]: {state.workflow_id}")
+    if state.tool_events:
+        console.print("Tools: " + " -> ".join(event.name for event in state.tool_events))
+    if state.output is not None:
+        console.print_json(state.output.model_dump_json())
+    report = build_run_report(state)
+    if report.model_call_count:
+        console.print(
+            "Model calls: "
+            f"{report.model_call_count} · {report.latency_ms or 0:.0f} ms · "
+            f"{report.total_tokens if report.total_tokens is not None else 'tokens unavailable'} "
+            f"· retries {report.retry_count}"
+        )
+    saved_report = save_run_report(state, report_path)
+    console.print(f"[dim]Checkpoint: {checkpoints.path_of(state.workflow_id)}[/dim]")
+    console.print(f"[dim]Sanitized report: {saved_report}[/dim]")
 
 
 # -- commands ----------------------------------------------------------------
@@ -496,6 +548,162 @@ def validate(ctx: typer.Context) -> None:
     for issue in issues:
         err_console.print(f"[red]{issue.path.name}[/red]: {issue.error}")
     raise typer.Exit(code=1)
+
+
+@ai_app.command("check")
+@_friendly_errors
+def ai_check(ctx: typer.Context) -> None:
+    """Call the configured real model and validate a tiny structured response."""
+    provider = _configured_provider(ctx)
+    started = time.perf_counter()
+    response = complete_structured(
+        provider,
+        [
+            Message(
+                role="user",
+                content=(
+                    "This is a connectivity check. Return ok=true and a short message "
+                    "confirming that structured output works."
+                ),
+            )
+        ],
+        ProviderHealth,
+        schema_name="provider_health",
+    )
+    health = ProviderHealth.model_validate(response)
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    metrics = getattr(provider, "last_metrics", None)
+    console.print(
+        f"[green]Model API connected[/green] · "
+        f"{getattr(provider, 'model', provider.name)} · "
+        f"{elapsed_ms:.0f} ms · {health.message}"
+    )
+    if metrics is not None:
+        cost = (
+            metrics.estimated_cost_usd
+            if metrics.estimated_cost_usd is not None
+            else "unconfigured"
+        )
+        console.print(
+            f"request_id={metrics.request_id or 'unavailable'} · "
+            f"tokens={metrics.total_tokens if metrics.total_tokens is not None else 'unavailable'} "
+            f"· retries={metrics.retry_count} · "
+            f"estimated_cost_usd={cost}"
+        )
+
+
+@ai_app.command("brief")
+@_friendly_errors
+def ai_brief(
+    ctx: typer.Context,
+    question: str | None = typer.Argument(
+        None,
+        help="Question about the local experience archive.",
+    ),
+    resume: str | None = typer.Option(
+        None,
+        "--resume",
+        help="Resume a paused workflow by its full workflow ID.",
+    ),
+    recorded: bool = typer.Option(
+        False,
+        "--recorded",
+        help="Use deterministic recorded model turns; all tools still execute for real.",
+    ),
+    report_path: Path | None = typer.Option(
+        None,
+        "--report",
+        help="Sanitized JSON report path (default: <home>/reports/<workflow-id>.json).",
+    ),
+) -> None:
+    """Create a grounded, structured brief with tools and durable checkpoints."""
+    store = _get_store(ctx)
+    checkpoints = WorkflowCheckpointStore(store.root)
+    if recorded:
+        provider = build_recorded_demo_provider(store)
+        if resume is not None:
+            previous = checkpoints.load(resume)
+            if any(message.get("tool_calls") for message in previous.messages):
+                provider.responses = provider.responses[-1:]
+    else:
+        provider = _configured_provider(ctx)
+    workflow = EvidenceBriefWorkflow(
+        provider=provider,
+        tools=ExperienceToolRegistry(store),
+        checkpoints=checkpoints,
+    )
+    if resume is not None:
+        state = workflow.resume(resume)
+    else:
+        if question is None or not question.strip():
+            raise WorkflowError("provide a question, or use --resume with a workflow ID")
+        state = workflow.start(question)
+    target_report = report_path or store.root / "reports" / f"{state.workflow_id}.json"
+    _render_workflow_state(state, checkpoints, target_report)
+
+
+@ai_app.command("eval")
+@_friendly_errors
+def ai_eval(
+    ctx: typer.Context,
+    dataset: Path = typer.Option(
+        _DEFAULT_EVAL_DATASET,
+        "--dataset",
+        help="JSONL evaluation dataset.",
+    ),
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Use the configured real model instead of recorded model turns.",
+    ),
+    report_path: Path | None = typer.Option(
+        None,
+        "--report",
+        help="Write the evaluation result as JSON (live runs default under <home>/reports).",
+    ),
+) -> None:
+    """Run tool-use, schema, grounding, and expected-content evaluations."""
+    if not dataset.is_file():
+        raise ValidationError(f"evaluation dataset not found: {dataset}")
+    live_provider = _configured_provider(ctx) if live else None
+    with tempfile.TemporaryDirectory(prefix="experienceos-eval-") as directory:
+        evaluation_report = run_evaluation(
+            dataset,
+            Path(directory),
+            live_provider=live_provider,
+        )
+    mode = "live model" if live else "recorded"
+    console.print(
+        f"[bold]Evaluation ({mode})[/bold]: "
+        f"{evaluation_report.passed}/{evaluation_report.total} "
+        f"expectations passed ({evaluation_report.expectation_pass_rate:.0%})"
+    )
+    console.print(f"[dim]{evaluation_report.interpretation}[/dim]")
+    recovery = (
+        f"{evaluation_report.recovery_pass_rate:.0%}"
+        if evaluation_report.recovery_pass_rate is not None
+        else "n/a"
+    )
+    console.print(
+        f"tool sequence {evaluation_report.tool_sequence_pass_rate:.0%} · "
+        f"schema {evaluation_report.schema_pass_rate:.0%} · "
+        f"grounding {evaluation_report.grounded_citation_pass_rate:.0%} · "
+        f"completion {evaluation_report.task_completion_rate:.0%} · "
+        f"recovery {recovery}"
+    )
+    for case in evaluation_report.cases:
+        mark = "[green]PASS[/green]" if case.passed else "[red]FAIL[/red]"
+        console.print(f"  {mark} {case.id} · tools: {', '.join(case.called_tools) or 'none'}")
+        if case.error and not case.passed:
+            err_console.print(f"    {case.error}")
+    if report_path is None and live:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        report_path = resolve_home(ctx.obj) / "reports" / f"eval-{timestamp}.json"
+    if report_path is not None:
+        saved = save_evaluation_report(evaluation_report, report_path)
+        console.print(f"[dim]Evaluation report: {saved}[/dim]")
+    if evaluation_report.passed != evaluation_report.total:
+        raise typer.Exit(code=1)
 
 
 def main() -> None:  # console_script entry point

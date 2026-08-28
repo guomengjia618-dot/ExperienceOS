@@ -34,6 +34,37 @@ class AIConfig:
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-4o-mini"
     api_key_env: str = "OPENAI_API_KEY"
+    timeout_seconds: float = 60.0
+    max_retries: int = 3
+    retry_base_seconds: float = 0.5
+    retry_max_seconds: float = 8.0
+    retry_jitter_seconds: float = 0.25
+    retry_time_budget_seconds: float = 30.0
+    input_cost_per_million_usd: float = 0.0
+    output_cost_per_million_usd: float = 0.0
+
+    def __post_init__(self) -> None:
+        self.timeout_seconds = float(self.timeout_seconds)
+        self.max_retries = int(self.max_retries)
+        self.retry_base_seconds = float(self.retry_base_seconds)
+        self.retry_max_seconds = float(self.retry_max_seconds)
+        self.retry_jitter_seconds = float(self.retry_jitter_seconds)
+        self.retry_time_budget_seconds = float(self.retry_time_budget_seconds)
+        self.input_cost_per_million_usd = float(self.input_cost_per_million_usd)
+        self.output_cost_per_million_usd = float(self.output_cost_per_million_usd)
+        if self.timeout_seconds <= 0:
+            raise ValueError("ai.timeout_seconds must be positive")
+        if self.max_retries < 0:
+            raise ValueError("ai.max_retries must not be negative")
+        if min(
+            self.retry_base_seconds,
+            self.retry_max_seconds,
+            self.retry_jitter_seconds,
+            self.retry_time_budget_seconds,
+            self.input_cost_per_million_usd,
+            self.output_cost_per_million_usd,
+        ) < 0:
+            raise ValueError("AI retry and cost settings must not be negative")
 
 
 @dataclass
@@ -83,6 +114,12 @@ def save_config(home: Path, config: AppConfig) -> Path:
         "[ai]",
     ]
     for key, value in asdict(config.ai).items():
-        lines.append(f'{key} = "{value}"')
+        if isinstance(value, str):
+            escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+            lines.append(f'{key} = "{escaped}"')
+        elif isinstance(value, bool):
+            lines.append(f"{key} = {str(value).lower()}")
+        else:
+            lines.append(f"{key} = {value}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path

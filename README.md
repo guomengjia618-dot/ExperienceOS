@@ -34,8 +34,10 @@ ExperienceOS 要做的事情只有一件：**把这些碎片转化为有证据�
 
 ```bash
 # 需要 Python 3.10+
+git clone https://github.com/guomengjia618-dot/ExperienceOS.git
+cd ExperienceOS
 python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -e ".[dev,github]"
+pip install -e ".[ai,dev,github]"
 
 experienceos init          # 初始化 ~/.experienceos
 experienceos add           # 交互式录入第一条经历
@@ -107,6 +109,109 @@ evidence 挂仓库本地路径；若 `origin` 指向 GitHub 会自动附上仓�
 ```
 
 完整字段说明见 `docs/ARCHITECTURE.md`。
+
+## AI Agent 可验证闭环
+
+仓库包含一条端到端 Evidence Brief Workflow。它不是只展示 prompt 的样例：
+模型选择 Tool，Tool 读取本地真实数据，最终结果经过结构与证据双重校验，执行状态
+可以从检查点恢复。
+
+```mermaid
+flowchart LR
+  CLI[CLI / Demo] --> WF[Checkpointed Workflow]
+  WF --> PF{Provider Adapter}
+  PF --> CHAT[Chat Completions]
+  PF --> RESP[Responses API]
+  CHAT --> HTTP[Retrying HTTP Transport]
+  RESP --> HTTP
+  WF --> TOOLS[3 read-only Tools]
+  TOOLS --> STORE[(Experience JSON Store)]
+  WF --> CHECK[(Atomic Checkpoints)]
+  WF --> REPORT[Sanitized Run Report]
+```
+
+实现证据：
+
+- 两个真实 API Adapter：保留 OpenAI-compatible Chat Completions，并增加 OpenAI
+  Responses API；API Key 只从环境变量读取，不进入配置、消息或检查点。
+- 严格结构化输出：请求 JSON Schema，返回后再用 Pydantic 本地校验。
+- 3 个实际只读 Tools：`search_experiences`、`get_experience`、
+  `get_evidence_stats`。
+- 证据护栏：详细结论必须先读取完整记录；引用 ID 和 evidence location 必须来自
+  本轮 Tool 结果。
+- 可恢复 Workflow：模型轮次和 Tool 结果原子保存；已完成的 `call_id` 不会在
+  resume 时重复执行。
+- 失败处理：区分 timeout、网络错误、429、5xx 和其他 4xx；支持有限次数的
+  exponential backoff + jitter、`Retry-After`、总重试时间预算、request ID 日志。
+- 可分享的脱敏报告：记录模型、延迟、tokens、估算成本、Tool 次数、重试次数和
+  request ID，不保存问题、回答或 Tool 结果。成本需要在配置中提供价格快照；未配置
+  时明确显示为 unavailable，而不是猜测。
+
+### 从干净 clone 复现
+
+```bash
+python -m pytest
+ruff check .
+python examples/agent_demo.py --home .experienceos-demo
+experienceos ai eval --report .experienceos-demo/reports/recorded-eval.json
+```
+
+离线 Demo 使用录制的模型回复，但 3 个 Tools、真实文件存储、严格 Schema、证据
+护栏、检查点和报告全部执行生产代码。固定数据集包含 9 个
+`human-authored-synthetic` 场景，覆盖 Tool 选择、检索后读取、无证据、拒绝虚构
+地址、参数错误、失败恢复、checkpoint/resume、相似经历消歧、空档案和 Schema
+失败。录制模式的 9/9 是**确定性回归通过率，不是模型准确率**。
+
+### 真实模型运行
+
+默认配置使用兼容 Chat Completions 的 Adapter。Key 只放环境变量：
+
+```bash
+# PowerShell: $env:OPENAI_API_KEY="..."
+export OPENAI_API_KEY="..."
+experienceos ai check
+experienceos ai brief "总结我最强的项目、可验证结果和证据缺口"
+experienceos ai eval --live
+```
+
+切换 Responses API，只需修改 `<home>/config.toml`：
+
+```toml
+[ai]
+provider = "openai-responses"
+base_url = "https://api.openai.com/v1"
+model = "your-model"
+api_key_env = "OPENAI_API_KEY"
+```
+
+任何网络、模型或 Tool 错误都会保留检查点。修复问题后续跑：
+
+```bash
+experienceos ai brief --resume wf_...
+```
+
+### 当前验证状态与边界
+
+| 项目 | 状态 |
+| --- | --- |
+| 无 Key Demo、3 Tools、Schema、grounding、checkpoint/resume | 已实现并由自动测试覆盖 |
+| 9 条人工标注合成回归集 | 已实现；只表示回归预期，不表示模型准确率 |
+| Chat Completions / Responses HTTP Adapter | 已实现并通过 mock HTTP 测试 |
+| `ai check` / `ai brief` / `ai eval --live` 在线结果 | **尚未发布：当前开发环境没有 API Key** |
+| RAG、MCP、Streaming | 未实现 |
+| 生产部署、真实用户结果 | 未实现 / 无数据 |
+| 真实线上延迟、tokens、成本 | 无已发布数据；代码只在真实调用后记录 |
+
+因此，这个仓库可以证明 Agent 工程闭环和可复现性，但不声称已完成生产部署、
+线上模型准确率或用户效果。RAG 是下一项候选能力；MCP 和 Streaming 不为堆关键词
+而提前加入。
+
+实现取舍参考 OpenAI 官方文档：
+[model guidance](https://developers.openai.com/api/docs/guides/latest-model)、
+[function calling](https://developers.openai.com/api/docs/guides/function-calling)、
+[evals](https://developers.openai.com/api/docs/guides/evals)、
+[rate limits](https://developers.openai.com/api/docs/guides/rate-limits) 与
+[production best practices](https://developers.openai.com/api/docs/guides/production-best-practices)。
 
 ## 路线图
 

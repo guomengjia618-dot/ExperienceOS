@@ -24,11 +24,22 @@ def test_explicit_override_wins(monkeypatch, tmp_path) -> None:
 
 
 def test_config_roundtrip(tmp_path) -> None:
-    config = AppConfig(ai=AIConfig(model="glm-4.7", api_key_env="GLM_API_KEY"))
+    config = AppConfig(
+        ai=AIConfig(
+            model="glm-4.7",
+            api_key_env="GLM_API_KEY",
+            max_retries=5,
+            timeout_seconds=12.5,
+            input_cost_per_million_usd=0.15,
+        )
+    )
     save_config(tmp_path, config)
     loaded = load_config(tmp_path)
     assert loaded.ai.model == "glm-4.7"
     assert loaded.ai.api_key_env == "GLM_API_KEY"
+    assert loaded.ai.max_retries == 5
+    assert loaded.ai.timeout_seconds == 12.5
+    assert loaded.ai.input_cost_per_million_usd == 0.15
     assert loaded.schema_version == 1
 
 

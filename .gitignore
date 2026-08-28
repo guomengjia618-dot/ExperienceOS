@@ -29,3 +29,4 @@ Thumbs.db
 
 # ExperienceOS runtime data (never commit a personal knowledge base)
 .experienceos/
+.experienceos-demo/

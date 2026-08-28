@@ -107,10 +107,31 @@ git 版本化、可随身拷贝。任何「索引」都应是可重建的派生�
 
 ### D4：AI 层只依赖协议，不锁定厂商
 
-`LLMProvider` 是一个 `complete(messages) -> str` 的 Protocol；M0 附带
-OpenAI 兼容实现（覆盖 OpenAI / GLM / DeepSeek / vLLM / Ollama 等一切
-兼容端点）。Prompt 是带版本的代码，测试断言其不变量（不捏造、要求 JSON、
-标记 provenance）。
+`LLMProvider` 的核心接口是 `generate(messages, response_schema, tools)`，
+同时保留 `complete(messages) -> str` 作为纯文本兼容入口。目前有两个 Adapter：
+OpenAI-compatible Chat Completions 请求 `/chat/completions`；Responses Adapter
+请求 `/responses`，并把 `response.output` 中的 function-call item 与本地
+`function_call_output` 按 `call_id` 回放。工作流不依赖具体 Adapter。
+
+两个 Adapter 共用 HTTP transport：按类别记录 timeout / network / rate_limit /
+server_error / http_error，支持有限次数的指数退避、jitter、`Retry-After` 和总重试
+时间预算。成功或失败都会产生不含 prompt 的 request metrics；request ID、延迟、
+tokens、重试数和按配置价格估算的成本可写入脱敏报告。价格不是硬编码的事实，
+未配置价格时成本为 `null`。
+
+Evidence Brief Agent 暴露 3 个只读本地工具：检索经历、按 ID 读取完整记录、
+统计证据覆盖率。模型只能提出调用，参数由服务端验证后才执行；最终 citation
+必须引用本轮实际读取的记录，evidence location 也必须存在于原始记录。
+
+Workflow 状态保存在 `<home>/workflows/<wf_id>.json`，每个模型轮次和工具
+结果后都会原子更新。进程终止、网络失败或 Schema 校验失败时，用户可按
+workflow ID 续跑；完成的 Tool `call_id` 会被去重，避免 interrupted execution
+后重复执行。API Key 不进入消息或检查点。`<home>/reports/` 中的分享报告只含
+运行指标，不含用户问题、模型回答或 Tool 返回内容。
+
+评测数据位于 `evals/experience_brief.jsonl`，每个合成 case 都包含人工编写的
+Tool 顺序、状态、文本和恢复预期。录制模式用于确定性回归，明确不解释为模型
+准确率；`--live` 才会在同一 ground truth 上产生实际模型表现和运行指标。
 
 ### D5：CLI-first
 
@@ -129,10 +150,11 @@ src/experienceos/
   core/         # 领域层：models.py / ulid.py / errors.py
   storage/      # store.py（文件仓库）/ query.py（查询引擎）
   connectors/   # base.py（Extractor 协议+草稿）/ registry.py（路由注册表）
-  ai/           # provider.py（协议）/ prompts.py（版本化模板）
+  ai/           # Provider Adapters / HTTP transport / Tools / Workflow / Evals
   cli/          # app.py（命令）/ render.py（rich 渲染）
   config.py     # home 解析 + config.toml 读写
-tests/          # 单元 + CLI 端到端（含离线 GitHub API fixtures）
+tests/          # 单元 + CLI 端到端 + GitHub fixtures + 失败与恢复回归
+evals/          # 人工标注的合成 JSONL 评测集
 docs/           # 架构 / 路线图 / Issue 拆分
 ```
 
@@ -142,3 +164,5 @@ docs/           # 架构 / 路线图 / Issue 拆分
 - API key / `GITHUB_TOKEN` 永不落盘：config.toml 只存 `api_key_env`（环境变量名），
   GitHub token 仅从环境变量读取。
 - `.gitignore` 排除 `.experienceos/`，防止个人知识库被误提交。
+- 429 / 5xx 才按策略重试；其他 4xx 直接失败，防止无意义重放。
+- `request_id` 会进入错误日志和脱敏报告，便于排障；日志不包含 Key 或 prompt。

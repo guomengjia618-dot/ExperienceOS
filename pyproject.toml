@@ -37,8 +37,8 @@ github = ["httpx>=0.27"]
 dev = ["pytest>=8.0", "ruff>=0.4"]
 
 [project.urls]
-Homepage = "https://github.com/experienceos/experienceos"
-Documentation = "https://github.com/experienceos/experienceos/tree/main/docs"
+Homepage = "https://github.com/guomengjia618-dot/ExperienceOS"
+Documentation = "https://github.com/guomengjia618-dot/ExperienceOS/tree/main/docs"
 
 [project.scripts]
 experienceos = "experienceos.cli.app:main"
@@ -46,8 +46,20 @@ experienceos = "experienceos.cli.app:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/experienceos"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"evals/experience_brief.jsonl" = "experienceos/ai/eval_cases.jsonl"
+
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "docs", "README.md", "LICENSE", "CHANGELOG.md"]
+include = [
+    "src",
+    "tests",
+    "docs",
+    "examples",
+    "evals",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

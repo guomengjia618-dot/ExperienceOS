@@ -265,3 +265,33 @@ def test_edit_rejects_invalid_json(
     # the original record is untouched and the edits are kept for retry
     assert ExperienceStore(cli_env).load(exp_id).title == "Demo Project"
     assert (Path(cli_env) / "experiences" / f".{exp_id}.edit.tmp").exists()
+
+
+def test_ai_brief_recorded_demo_runs_three_tools(cli_env: Any, make_experience) -> None:
+    seed(
+        cli_env,
+        make_experience,
+        title="Agent Demo Project",
+        result=["Reached 92% accuracy."],
+        evidence=[{"kind": "repo", "location": "github.com/example/demo"}],
+    )
+    result = runner.invoke(
+        app,
+        ["ai", "brief", "Summarize the newest project", "--recorded"],
+    )
+    assert result.exit_code == 0, full_output(result)
+    output = full_output(result)
+    assert "search_experiences -> get_experience -> get_evidence_stats" in output
+    assert "Agent Demo Project" in output
+    assert "Checkpoint:" in output
+    assert "Sanitized report:" in output
+    assert len(list((Path(cli_env) / "reports").glob("wf_*.json"))) == 1
+
+
+def test_ai_eval_recordings_pass(cli_env: Any) -> None:
+    result = runner.invoke(app, ["ai", "eval"])
+    assert result.exit_code == 0, full_output(result)
+    assert "9/9 expectations passed" in full_output(result)
+    assert "not model accuracy" in full_output(result)
+    assert "search_with_evidence" in full_output(result)
+    assert "provider_failure_resume" in full_output(result)
