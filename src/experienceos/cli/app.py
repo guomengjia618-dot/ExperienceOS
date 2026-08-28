@@ -214,7 +214,8 @@ def import_cmd(
     author: str | None = typer.Option(
         None,
         "--author",
-        help="Filter source activity by author (GitHub and future git connectors).",
+        help="Filter source activity by author: GitHub login or a local "
+        "repo 'Name <email>' pattern (git matches against commit authors).",
     ),
 ) -> None:
     """Turn an external source into experience drafts (status=draft).
