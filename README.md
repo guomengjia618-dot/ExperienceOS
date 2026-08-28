@@ -63,6 +63,19 @@ experienceos import github:owner/repo
 导入结果始终为 `status=draft`，预览确认后才保存。GitHub 功能使用独立
 `[github]` extra，不增加核心安装的运行时依赖。
 
+### 导入本地 Git 仓库
+
+对本地 checkout 做一次只读分析（不联网、不写入仓库），得到时间窗、
+语言构成与提交行为摘要：
+
+```bash
+experienceos import /path/to/repo                  # 作者默认取 git config user.email
+experienceos import /path/to/repo --author me@example.com
+```
+
+evidence 挂仓库本地路径；若 `origin` 指向 GitHub 会自动附上仓库 URL。
+分析只用 `git log` / `git ls-files`，语言按扩展名内置映射统计。
+
 ## Experience 数据模型
 
 每个经历是一个统一的 `Experience` 抽象——不只是代码项目，还包括毕业设计、

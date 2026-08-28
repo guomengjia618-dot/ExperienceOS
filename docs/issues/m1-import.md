@@ -59,7 +59,7 @@ commit / PR / issue，生成一份有证据的草稿。
 `httpx` 放在独立 `[github]` extra 中，并由 Connector 延迟导入，因此核心安装
 不增加网络依赖。绝不捏造数字：commit 数、PR 数来自 API 计数。
 
-## #008 本地 git 仓库分析器
+## #008 本地 git 仓库分析器 ✅ 2026-08-28
 
 **Labels**: `area/connector` · P1 · intermediate
 
@@ -70,13 +70,19 @@ commit / PR / issue，生成一份有证据的草稿。
 
 ### 验收标准
 
-- [ ] `experienceos import /path/to/repo [--author me@example.com]`
-- [ ] 通过 `git log` 采集：时间窗（首/末提交）、我的 commit 数、变更规模
+- [x] `experienceos import /path/to/repo [--author me@example.com]`
+- [x] 通过 `git log` 采集：时间窗（首/末提交）、我的 commit 数、变更规模
       中位数；不执行任何写操作 / 网络请求
-- [ ] 语言构成按扩展名统计（内置映射表，不引入 linguist 依赖）
-- [ ] evidence 挂 `repo`（本地路径）+ 若检测到 GitHub remote 挂 URL
-- [ ] 非 git 目录给出可读错误；子模块/浅克隆不崩溃
-- [ ] 用 tmp git 仓库 fixture 做集成测试（`git init` + 若干 commit）
+- [x] 语言构成按扩展名统计（内置映射表，不引入 linguist 依赖）
+- [x] evidence 挂 `repo`（本地路径）+ 若检测到 GitHub remote 挂 URL
+- [x] 非 git 目录给出可读错误；子模块/浅克隆不崩溃
+- [x] 用 tmp git 仓库 fixture 做集成测试（`git init` + 若干 commit）
+
+### 技术说明
+
+省略 `--author` 时取仓库的 `git config user.email`（本地优先：这是你自己的
+机器）；`--author` 走 git 原生的 `Name <email>` 模式匹配。contribution 截取
+最近 30 条去重主题，context 注明截断。
 
 ## #009 简历导入器（文本）
 
