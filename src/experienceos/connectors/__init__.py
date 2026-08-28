@@ -12,9 +12,11 @@ from experienceos.connectors.base import (
     parse_source,
 )
 from experienceos.connectors.github import GitHubAPIError, GitHubExtractor
+from experienceos.connectors.gitrepo import GitRepoError, GitRepoExtractor
 from experienceos.connectors.registry import Registry, default_registry
 
 default_registry.register(GitHubExtractor())
+default_registry.register(GitRepoExtractor())
 
 __all__ = [
     "AuthoredExtractor",
@@ -22,6 +24,8 @@ __all__ = [
     "Extractor",
     "GitHubAPIError",
     "GitHubExtractor",
+    "GitRepoError",
+    "GitRepoExtractor",
     "Registry",
     "default_registry",
     "parse_source",

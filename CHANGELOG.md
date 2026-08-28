@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Local git repository analyzer (#008): read-only `git log` analysis of a
+  local checkout — activity window, author-attributed commit count and
+  median change size, extension-based language composition (built-in map,
+  no linguist), repo-path evidence plus the GitHub URL when an `origin`
+  remote points at github.com. `--author` defaults to the repository's
+  `git config user.email`; non-git directories, submodules and shallow
+  clones fail or degrade with readable errors.
 - GitHub importer (#007): authenticated-user or explicit-author activity
   import, repository languages, paginated commits/PRs/issues, evidence-backed
   drafts, actionable authentication/rate-limit errors, and offline API fixtures.
