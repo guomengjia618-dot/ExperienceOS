@@ -53,6 +53,7 @@ class WorkflowState(BaseModel):
     workflow_id: str
     question: str
     status: Literal["running", "paused", "completed"]
+    provider: str = "unknown"
     model: str
     messages: list[dict[str, Any]]
     tool_events: list[ToolEvent] = Field(default_factory=list)
@@ -117,6 +118,7 @@ class EvidenceBriefWorkflow:
             workflow_id=f"wf_{new_ulid()}",
             question=question.strip(),
             status="running",
+            provider=self.provider.name,
             model=str(getattr(self.provider, "model", self.provider.name)),
             messages=[
                 Message(role="system", content=EVIDENCE_BRIEF_SYSTEM_PROMPT).to_dict(),
@@ -132,6 +134,19 @@ class EvidenceBriefWorkflow:
         state = self.checkpoints.load(workflow_id)
         if state.status == "completed":
             return state
+        current_provider = self.provider.name
+        current_model = str(getattr(self.provider, "model", current_provider))
+        if state.provider not in {"unknown", current_provider}:
+            raise WorkflowError(
+                f"workflow provider mismatch: checkpoint uses {state.provider!r}, "
+                f"configured provider is {current_provider!r}"
+            )
+        if state.model != current_model:
+            raise WorkflowError(
+                f"workflow model mismatch: checkpoint uses {state.model!r}, "
+                f"configured model is {current_model!r}"
+            )
+        state.provider = current_provider
         state.status = "running"
         state.last_error = None
         self.checkpoints.save(state)

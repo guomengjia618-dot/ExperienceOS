@@ -44,7 +44,7 @@ def build_run_report(state: WorkflowState) -> SanitizedRunReport:
     return SanitizedRunReport(
         workflow_id=state.workflow_id,
         status=state.status,
-        provider=_last_string(calls, "provider"),
+        provider=_last_string(calls, "provider") or state.provider,
         model=state.model,
         created_at=state.created_at,
         updated_at=state.updated_at,

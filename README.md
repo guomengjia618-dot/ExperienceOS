@@ -158,7 +158,7 @@ experienceos ai eval --report .experienceos-demo/reports/recorded-eval.json
 
 离线 Demo 使用录制的模型回复，但 3 个 Tools、真实文件存储、严格 Schema、证据
 护栏、检查点和报告全部执行生产代码。固定数据集包含 9 个
-`human-authored-synthetic` 场景，覆盖 Tool 选择、检索后读取、无证据、拒绝虚构
+`ai-assisted-synthetic` 场景，覆盖 Tool 选择、检索后读取、无证据、拒绝虚构
 地址、参数错误、失败恢复、checkpoint/resume、相似经历消歧、空档案和 Schema
 失败。录制模式的 9/9 是**确定性回归通过率，不是模型准确率**。
 
@@ -195,7 +195,7 @@ experienceos ai brief --resume wf_...
 | 项目 | 状态 |
 | --- | --- |
 | 无 Key Demo、3 Tools、Schema、grounding、checkpoint/resume | 已实现并由自动测试覆盖 |
-| 9 条人工标注合成回归集 | 已实现；只表示回归预期，不表示模型准确率 |
+| 9 条 AI 辅助起草的合成回归集 | 已实现、未独立人工复核；只表示回归预期，不表示模型准确率 |
 | Chat Completions / Responses HTTP Adapter | 已实现并通过 mock HTTP 测试 |
 | `ai check` / `ai brief` / `ai eval --live` 在线结果 | **尚未发布：当前开发环境没有 API Key** |
 | RAG、MCP、Streaming | 未实现 |

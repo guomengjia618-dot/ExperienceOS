@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from experienceos.ai.evaluation import run_evaluation, save_evaluation_report
+from experienceos.ai.evaluation import (
+    load_eval_cases,
+    run_evaluation,
+    save_evaluation_report,
+)
 from experienceos.ai.provider import MockProvider, ModelResponse, ToolCall
 from experienceos.ai.reporting import save_run_report
 from experienceos.ai.schemas import BriefCitation, EvidenceBrief
@@ -146,6 +151,14 @@ def test_workflow_resumes_after_provider_failure(home, store, make_experience) -
     assert paused.status == "paused"
     assert [event.name for event in paused.tool_events] == ["get_experience"]
 
+    incompatible = EvidenceBriefWorkflow(
+        provider=MockProvider([final_brief(exp)], name="other-provider"),
+        tools=ExperienceToolRegistry(store),
+        checkpoints=checkpoints,
+    )
+    with pytest.raises(WorkflowError, match="provider mismatch"):
+        incompatible.resume(workflow_id)
+
     resumed = EvidenceBriefWorkflow(
         provider=MockProvider([final_brief(exp)]),
         tools=ExperienceToolRegistry(store),
@@ -246,3 +259,34 @@ def test_recorded_eval_dataset_passes(tmp_path) -> None:
     saved_text = saved.read_text(encoding="utf-8")
     assert str(tmp_path) not in saved_text
     assert "<redacted:tool_argument_error>" in saved_text
+
+
+def test_eval_dataset_rejects_unsafe_and_duplicate_case_ids(tmp_path) -> None:
+    source = Path(__file__).resolve().parents[1] / "evals" / "experience_brief.jsonl"
+    first_case = json.loads(source.read_text(encoding="utf-8").splitlines()[0])
+    unsafe = tmp_path / "unsafe.jsonl"
+    first_case["id"] = "../escape"
+    unsafe.write_text(json.dumps(first_case) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid eval case"):
+        load_eval_cases(unsafe)
+
+    first_case["id"] = "duplicate"
+    duplicate = tmp_path / "duplicate.jsonl"
+    line = json.dumps(first_case)
+    duplicate.write_text(f"{line}\n{line}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate eval case id"):
+        load_eval_cases(duplicate)
+
+
+def test_eval_manifest_matches_dataset_and_discloses_provenance() -> None:
+    root = Path(__file__).resolve().parents[1] / "evals"
+    dataset = root / "experience_brief.jsonl"
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    cases = load_eval_cases(dataset)
+
+    assert hashlib.sha256(dataset.read_bytes()).hexdigest() == manifest["dataset_sha256"]
+    assert len(cases) == manifest["case_count"] == 9
+    assert {case.label_source for case in cases} == {"ai-assisted-synthetic"}
+    assert manifest["contains_real_user_data"] is False
+    assert manifest["label_review"] == "not-independently-human-reviewed"

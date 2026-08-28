@@ -41,7 +41,7 @@ class RecordedTurn(BaseModel):
 class EvalCase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str
+    id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$")
     question: str
     experiences: list[dict[str, Any]]
     expected_tool_sequence: list[str]
@@ -49,8 +49,11 @@ class EvalCase(BaseModel):
     expected_status: Literal["completed", "paused"] = "completed"
     expected_error_contains: str | None = None
     resume_after_error: bool = False
-    label_source: Literal["human-authored-synthetic"]
-    ground_truth_notes: str
+    label_source: Literal[
+        "ai-assisted-synthetic",
+        "human-labelled-sanitized-real",
+    ]
+    expected_behavior_notes: str
     recorded_turns: list[RecordedTurn]
 
 
@@ -103,11 +106,16 @@ class EvaluationReport(BaseModel):
 
 def load_eval_cases(path: Path) -> list[EvalCase]:
     cases: list[EvalCase] = []
+    seen_ids: set[str] = set()
     for line_number, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
             continue
         try:
-            cases.append(EvalCase.model_validate_json(line))
+            case = EvalCase.model_validate_json(line)
+            if case.id in seen_ids:
+                raise ValueError(f"duplicate eval case id: {case.id}")
+            seen_ids.add(case.id)
+            cases.append(case)
         except Exception as exc:
             raise ValueError(f"invalid eval case at {path}:{line_number}: {exc}") from exc
     if not cases:
@@ -175,7 +183,7 @@ def run_evaluation(
     *,
     live_provider: LLMProvider | None = None,
 ) -> EvaluationReport:
-    """Run labelled recordings, or swap in a live provider against the same cases."""
+    """Run expectation-labelled recordings, or use a live provider on the same cases."""
     cases = load_eval_cases(dataset_path)
     reports = [
         _run_case(case, Path(work_directory) / case.id, live_provider)
@@ -193,7 +201,7 @@ def run_evaluation(
         dataset=str(dataset_path),
         live=live_provider is not None,
         interpretation=(
-            "Live model performance on a small human-authored synthetic set."
+            "Live model performance on a small AI-assisted synthetic set."
             if live_provider is not None
             else "Deterministic regression replay; this is not model accuracy."
         ),

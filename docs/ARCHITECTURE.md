@@ -129,9 +129,11 @@ workflow ID 续跑；完成的 Tool `call_id` 会被去重，避免 interrupted 
 后重复执行。API Key 不进入消息或检查点。`<home>/reports/` 中的分享报告只含
 运行指标，不含用户问题、模型回答或 Tool 返回内容。
 
-评测数据位于 `evals/experience_brief.jsonl`，每个合成 case 都包含人工编写的
-Tool 顺序、状态、文本和恢复预期。录制模式用于确定性回归，明确不解释为模型
-准确率；`--live` 才会在同一 ground truth 上产生实际模型表现和运行指标。
+评测数据位于 `evals/experience_brief.jsonl`，每个 AI 辅助起草的合成 case
+都包含 Tool 顺序、状态、文本和恢复预期。数据来源、复核状态和 SHA-256 记录在
+`evals/manifest.json`。录制模式用于确定性回归，明确不解释为模型准确率；
+`--live` 只是在同一组合成预期上产生一次小规模模型表现和运行指标，仍不代表
+真实用户任务分布。
 
 ### D5：CLI-first
 
@@ -154,7 +156,7 @@ src/experienceos/
   cli/          # app.py（命令）/ render.py（rich 渲染）
   config.py     # home 解析 + config.toml 读写
 tests/          # 单元 + CLI 端到端 + GitHub fixtures + 失败与恢复回归
-evals/          # 人工标注的合成 JSONL 评测集
+evals/          # AI 辅助合成回归集 + 数据来源 manifest
 docs/           # 架构 / 路线图 / Issue 拆分
 ```
 
