@@ -42,3 +42,30 @@ def test_unknown_keys_are_ignored(tmp_path) -> None:
     )
     loaded = load_config(tmp_path)
     assert loaded.ai.model == "m"
+
+
+def test_timeout_roundtrips_as_bare_number(tmp_path) -> None:
+    config = AppConfig(ai=AIConfig(timeout=12.5))
+    save_config(tmp_path, config)
+    raw = tmp_path.joinpath("config.toml").read_text(encoding="utf-8")
+    assert "timeout = 12.5" in raw  # unquoted, so TOML sees a float
+    assert load_config(tmp_path).ai.timeout == 12.5
+
+
+def test_hand_edited_string_timeout_is_coerced(tmp_path) -> None:
+    tmp_path.joinpath("config.toml").write_text(
+        '[ai]\ntimeout = "30"\n', encoding="utf-8"
+    )
+    assert load_config(tmp_path).ai.timeout == 30.0
+
+
+def test_invalid_timeout_fails_with_validation_error(tmp_path) -> None:
+    import pytest
+
+    from experienceos.core.errors import ValidationError
+
+    tmp_path.joinpath("config.toml").write_text(
+        '[ai]\ntimeout = "soon"\n', encoding="utf-8"
+    )
+    with pytest.raises(ValidationError, match="timeout"):
+        load_config(tmp_path)

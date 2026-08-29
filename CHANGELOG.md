@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-08-29
+### Added
+
+- LLM provider wiring (#010): `OpenAICompatibleProvider` completes the M0 skeleton — configurable timeout (`ai.timeout`), exactly one retry for network-class errors, and 429/5xx responses surfaced as `AIProviderError` with a response-body summary. New `experienceos config get/set/list` subcommands edit config.toml (secrets stay in env vars), `experienceos ai check` verifies the endpoint end to end (`--mock` targets the scripted provider), and `MockProvider` moves into the core `ai` package for tests and `--dry-run` modes.
 
 ### Added
 

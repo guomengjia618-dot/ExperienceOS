@@ -1,8 +1,8 @@
 """ExperienceOS command line interface.
 
-Twelve commands covering the M0 loop: initialize a home, record
-experiences, browse/search them, refine fields, and keep the local
-knowledge base healthy.
+Commands cover the full local loop: initialize a home, record or import
+experiences, browse/search them, refine fields, and keep the knowledge
+base healthy; plus config/AI diagnostics for the M2 assistant features.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import json
 import os
 import shlex
 import subprocess
+import time
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
@@ -22,6 +23,8 @@ from pydantic import ValidationError as PydanticValidationError
 from rich.console import Console
 
 from experienceos import __version__
+from experienceos.ai.mock import MockProvider
+from experienceos.ai.provider import Message, build_provider
 from experienceos.cli import render
 from experienceos.config import load_config, resolve_home, save_config
 from experienceos.connectors import AuthoredExtractor, default_registry
@@ -498,6 +501,111 @@ def validate(ctx: typer.Context) -> None:
     for issue in issues:
         err_console.print(f"[red]{issue.path.name}[/red]: {issue.error}")
     raise typer.Exit(code=1)
+
+
+# -- config & AI diagnostics (#010) ------------------------------------------
+
+config_app = typer.Typer(help="Inspect and change config.toml settings.")
+app.add_typer(config_app, name="config")
+
+ai_app = typer.Typer(help="AI provider diagnostics.")
+app.add_typer(ai_app, name="ai")
+
+# dotted key -> (AIConfig field, human description)
+_CONFIG_KEYS: dict[str, str] = {
+    "ai.provider": "provider adapter (openai-compat)",
+    "ai.base_url": "OpenAI-compatible API base URL",
+    "ai.model": "model name, e.g. glm-4.7 or gpt-4o-mini",
+    "ai.api_key_env": "env var holding the API key — never the key itself",
+    "ai.timeout": "request timeout in seconds",
+}
+
+
+def _ai_field(key: str) -> str:
+    if key not in _CONFIG_KEYS:
+        raise ValidationError(
+            f"unsupported config key '{key}'. Allowed: {', '.join(_CONFIG_KEYS)}"
+        )
+    return key.split(".", 1)[1]
+
+
+@config_app.command("list")
+@_friendly_errors
+def config_list(ctx: typer.Context) -> None:
+    """Show every config key and its current value."""
+    config = load_config(resolve_home(ctx.obj))
+    values = {
+        key: getattr(config.ai, key.split(".", 1)[1]) for key in _CONFIG_KEYS
+    }
+    width = max(len(key) for key in values)
+    for key, value in values.items():
+        console.print(f"{key.ljust(width)}  {value}  [dim]{_CONFIG_KEYS[key]}[/dim]")
+
+
+@config_app.command("get")
+@_friendly_errors
+def config_get(ctx: typer.Context, key: str = typer.Argument(...)) -> None:
+    """Print one config value: `config get ai.model`."""
+    config = load_config(resolve_home(ctx.obj))
+    console.print(getattr(config.ai, _ai_field(key)))
+
+
+@config_app.command("set")
+@_friendly_errors
+def config_set(
+    ctx: typer.Context,
+    key: str = typer.Argument(...),
+    value: str = typer.Argument(...),
+) -> None:
+    """Change one config value: `config set ai.model glm-4.7`.
+
+    Secrets are never stored here — point `ai.api_key_env` at the
+    environment variable that holds your API key.
+    """
+    field_name = _ai_field(key)
+    home = resolve_home(ctx.obj)
+    config = load_config(home)
+    setattr(config.ai, field_name, _coerce_config_value(key, value))
+    save_config(home, config)
+    console.print(f"[green]Updated[/green] {key} = {getattr(config.ai, field_name)}")
+
+
+def _coerce_config_value(key: str, value: str) -> Any:
+    if key == "ai.timeout":
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise ValidationError(
+                f"{key} expects a number of seconds, got {value!r}"
+            ) from exc
+    return value
+
+
+@ai_app.command("check")
+@_friendly_errors
+def ai_check(
+    ctx: typer.Context,
+    mock: bool = typer.Option(
+        False, "--mock", help="Check the scripted MockProvider instead of the endpoint."
+    ),
+) -> None:
+    """Verify the configured LLM endpoint answers a minimal request.
+
+    Reports model name and round-trip latency. Without a key it names
+    the exact environment variable to set; no key is ever read from or
+    written to disk.
+    """
+    config = load_config(resolve_home(ctx.obj))
+    provider = MockProvider("ok") if mock else build_provider(config.ai)
+    started = time.perf_counter()
+    reply = provider.complete(
+        [Message(role="user", content="Reply with exactly: ok")]
+    )
+    elapsed = time.perf_counter() - started
+    console.print(
+        f"[green]ok[/green] provider={provider.name} model={config.ai.model} "
+        f"reply={reply.strip()[:40]!r} latency={elapsed:.2f}s"
+    )
 
 
 def main() -> None:  # console_script entry point

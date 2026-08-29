@@ -265,3 +265,74 @@ def test_edit_rejects_invalid_json(
     # the original record is untouched and the edits are kept for retry
     assert ExperienceStore(cli_env).load(exp_id).title == "Demo Project"
     assert (Path(cli_env) / "experiences" / f".{exp_id}.edit.tmp").exists()
+
+
+# -- config & AI diagnostics (#010) ------------------------------------------
+
+
+def test_config_set_then_get_roundtrip(cli_env: Any) -> None:
+    result = runner.invoke(app, ["config", "set", "ai.model", "glm-4.7"])
+    assert result.exit_code == 0, full_output(result)
+    shown = runner.invoke(app, ["config", "get", "ai.model"])
+    assert shown.exit_code == 0
+    assert "glm-4.7" in shown.output
+    # the value survives a fresh load from config.toml
+    from experienceos.config import load_config
+
+    assert load_config(Path(cli_env)).ai.model == "glm-4.7"
+
+
+def test_config_set_timeout_accepts_numbers_only(cli_env: Any) -> None:
+    ok = runner.invoke(app, ["config", "set", "ai.timeout", "45"])
+    assert ok.exit_code == 0, full_output(ok)
+    bad = runner.invoke(app, ["config", "set", "ai.timeout", "soon"])
+    assert bad.exit_code == 1
+    assert "number of seconds" in full_output(bad)
+
+
+def test_config_set_rejects_unknown_key(cli_env: Any) -> None:
+    result = runner.invoke(app, ["config", "set", "ai.secret", "hunter2"])
+    assert result.exit_code == 1
+    assert "unsupported config key" in full_output(result)
+
+
+def test_config_list_shows_all_keys(cli_env: Any) -> None:
+    result = runner.invoke(app, ["config", "list"])
+    assert result.exit_code == 0, full_output(result)
+    for key in ("ai.provider", "ai.base_url", "ai.model", "ai.api_key_env", "ai.timeout"):
+        assert key in result.output
+
+
+def test_ai_check_with_mock_provider(cli_env: Any) -> None:
+    result = runner.invoke(app, ["ai", "check", "--mock"])
+    assert result.exit_code == 0, full_output(result)
+    assert "provider=mock" in result.output
+    assert "latency=" in result.output
+
+
+def test_ai_check_reports_missing_key(
+    cli_env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    result = runner.invoke(app, ["ai", "check"])
+    output = full_output(result)
+    assert result.exit_code == 1, output
+    assert "$OPENAI_API_KEY" in output
+
+
+def test_ai_check_against_injected_fake_provider(
+    cli_env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib
+
+    from experienceos.ai import MockProvider
+
+    # patch via importlib: `import experienceos.cli.app as x` and dotted
+    # setattr strings both resolve to the Typer `app` instance because
+    # cli/__init__ re-exports `app` over the submodule name
+    cli_module = importlib.import_module("experienceos.cli.app")
+    monkeypatch.setattr(cli_module, "build_provider", lambda config: MockProvider("pong"))
+    monkeypatch.setenv("OPENAI_API_KEY", "unused-here")
+    result = runner.invoke(app, ["ai", "check"])
+    assert result.exit_code == 0, full_output(result)
+    assert "'pong'" in result.output
