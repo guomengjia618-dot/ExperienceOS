@@ -65,6 +65,7 @@ DONE_NOTES = {
     "009": "Implemented in commit c97bcda (resume importer, rule-based).",
     "010": "Implemented in commit 226037a (provider wiring, config + ai check, MockProvider).",
     "013": "Implemented in commit 7196195 (core guardrails + lint command).",
+    "011": "Implemented in commit 96d5a62 (interview command + ai/interview.py pipeline).",
 }
 
 DIFFICULTY_LABELS = {"good first issue", "intermediate", "advanced"}

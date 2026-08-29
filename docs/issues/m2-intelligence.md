@@ -24,7 +24,7 @@
       `--dry-run` 使用
 - [x] API key 只从环境变量读取的行为有测试锁定
 
-## #011 `interview` 命令（AI 采访录入）
+## #011 `interview` 命令（AI 采访录入）✅ 2026-08-29
 
 **Labels**: `area/ai` `area/cli` · P0 · advanced
 
@@ -35,16 +35,16 @@
 
 ### 验收标准
 
-- [ ] `experienceos interview`：基于 `INTAKE_INTERVIEW_PROMPT_V1` 的多轮
+- [x] `experienceos interview`：基于 `INTAKE_INTERVIEW_PROMPT_V1` 的多轮
       对话；每轮 AI 只问一个问题
-- [ ] 对话中用户提到的 repo/URL/SHA 自动收集为候选 evidence
-- [ ] 结束时用 `EXTRACTION_PROMPT_V1` 汇总为草稿（status=draft，
+- [x] 对话中用户提到的 repo/URL/SHA 自动收集为候选 evidence
+- [x] 结束时用 `EXTRACTION_PROMPT_V1` 汇总为草稿（status=draft，
       `source.origin=interview`，`created_by="ai:<model>"`），渲染预览并
       逐字段确认（接受 / 编辑 / 丢弃），全部确认才落盘
-- [ ] 提取失败（非法 JSON）自动重试一次，再失败则保存对话原文到
+- [x] 提取失败（非法 JSON）自动重试一次，再失败则保存对话原文到
       `<home>/drafts/` 供下次续用
-- [ ] `--no-ai` 模式退化为 #006 之前的纯向导（永远保留无 AI 路径）
-- [ ] 用 MockProvider 的端到端测试覆盖完整流程
+- [x] `--no-ai` 模式退化为 #006 之前的纯向导（永远保留无 AI 路径）
+- [x] 用 MockProvider 的端到端测试覆盖完整流程
 
 ### 技术说明
 
