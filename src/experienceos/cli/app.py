@@ -35,6 +35,7 @@ from experienceos.core.errors import (
     StorageError,
     ValidationError,
 )
+from experienceos.core.guardrails import find_unsupported_claims, lint_experiences
 from experienceos.core.models import (
     Experience,
     ExperienceType,
@@ -486,6 +487,8 @@ def stats(ctx: typer.Context) -> None:
         console.print(
             "Top technologies: " + " | ".join(k for k, _ in tech_counts.most_common(10))
         )
+    unsupported = sum(len(find_unsupported_claims(e)) for e in experiences)
+    console.print(f"Unsupported claims (no evidence): {unsupported}")
 
 
 @app.command()
@@ -500,6 +503,41 @@ def validate(ctx: typer.Context) -> None:
         return
     for issue in issues:
         err_console.print(f"[red]{issue.path.name}[/red]: {issue.error}")
+    raise typer.Exit(code=1)
+
+
+@app.command()
+@_friendly_errors
+def lint(
+    ctx: typer.Context,
+    all: bool = typer.Option(
+        False, "--all", help="Also scan archived records (default: draft + active)."
+    ),
+) -> None:
+    """Flag quantitative claims that lack evidence (#013).
+
+    Exit code 1 when issues are found, so this can gate CI or pre-commit.
+    """
+    store = _get_store(ctx)
+    experiences = store.list_all()
+    if not all:
+        experiences = [e for e in experiences if e.status is not Status.archived]
+    issues = lint_experiences(experiences)
+    if not issues:
+        console.print(
+            f"[green]No unsupported claims in {len(experiences)} record(s).[/green]"
+        )
+        return
+    for issue in issues:
+        console.print(
+            f"[yellow]![/yellow] {render.short_id(issue.experience_id)} "
+            f"[bold]{issue.field}[/bold]: {issue.sentence}"
+        )
+        console.print(f"    [dim]-> {issue.suggestion}[/dim]")
+    console.print(
+        f"\n{len(issues)} unsupported claim(s) across "
+        f"{len({issue.experience_id for issue in issues})} record(s)."
+    )
     raise typer.Exit(code=1)
 
 

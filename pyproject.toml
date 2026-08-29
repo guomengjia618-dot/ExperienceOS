@@ -73,8 +73,9 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
 # the resume parser (#009) matches CJK punctuation by design; its tests
-# assert against fullwidth strings
+# assert against fullwidth strings; guardrails (#013) matches fullwidth ％
 "src/experienceos/connectors/resume/*" = ["RUF001", "RUF002", "RUF003"]
+"src/experienceos/core/guardrails.py" = ["RUF001", "RUF002", "RUF003"]
 "tests/test_resume_connector.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.flake8-bugbear]
