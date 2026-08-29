@@ -30,7 +30,7 @@ Issue 明细见 [issues/](issues/)，标签体系：`area/core` `area/cli`
 
 **目标**：AI 成为「不撒谎的采访者与整理员」。
 
-- #010 LLM Provider 接线（配置校验、offline mock provider、超时与重试）
+- ✅ #010 LLM Provider 接线（配置校验、offline mock provider、超时与重试）
 - #011 `interview` 命令（STAR 引导对话 → 草稿，全程引用证据）
 - #012 `enrich` 命令（对已有记录提出 contribution/result/reflection
   改进提案，逐项 diff 确认）

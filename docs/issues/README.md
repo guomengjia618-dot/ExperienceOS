@@ -15,7 +15,7 @@
 | --- | --- | --- |
 | M0 基础 | [m0-foundation.md](m0-foundation.md) | ✅ 全部完成（v0.1.0） |
 | M1 导入 | [m1-import.md](m1-import.md) | ✅ 全部完成（v0.2.0） |
-| M2 智能 | [m2-intelligence.md](m2-intelligence.md) | 待开工 |
+| M2 智能 | [m2-intelligence.md](m2-intelligence.md) | 🚧 #010 已完成 |
 | M3 输出 | [m3-output.md](m3-output.md) | 待开工 |
 | M4 平台 | [m4-platform.md](m4-platform.md) | 待开工 |
 | Backlog | 见 [../ROADMAP.md](../ROADMAP.md#backlog暂不排期) | 不排期 |
