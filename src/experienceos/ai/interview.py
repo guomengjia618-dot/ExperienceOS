@@ -99,17 +99,19 @@ def interview_system_prompt(language: str) -> str:
 
 
 def build_extraction_messages(
-    transcript: list[tuple[str, str]], model: str
+    transcript: list[tuple[str, str]],
+    model: str,
+    material_label: str = "Material (conversation transcript)",
 ) -> list[Message]:
-    """System extraction prompt + the full transcript as the material."""
+    """System extraction prompt + the material as the user message."""
     lines = [f"{role}: {text}" for role, text in transcript]
-    material = "\n".join(lines) or "(empty conversation)"
+    material = "\n".join(lines) or "(empty)"
     return [
         Message(role="system", content=EXTRACTION_PROMPT_V1),
         Message(
             role="user",
             content=(
-                f"Material (conversation transcript):\n\n{material}\n\n"
+                f"{material_label}:\n\n{material}\n\n"
                 f'Model name for source.created_by: "ai:{model}".\n'
                 "Output ONLY the JSON object."
             ),
@@ -140,12 +142,16 @@ def draft_from_extraction(
     data: dict[str, Any],
     model: str,
     candidates: list[dict[str, str]] | None = None,
+    origin: str = "interview",
+    ref: str | None = None,
 ) -> ExperienceDraft:
-    """Whitelist-map extraction JSON into a validated interview draft.
+    """Whitelist-map extraction JSON into a validated draft.
 
     Unknown keys are dropped (never guessed); invalid enum values fall
     back to safe defaults; an absent or malformed period keeps an
     explicit ``1970-01`` placeholder the user edits during confirmation.
+    ``origin``/``ref`` set the provenance (interview conversation by
+    default, ``resume`` for the PDF pipeline).
     """
     fields: dict[str, Any] = {
         "title": _scalar(data.get("title")) or "Untitled experience",
@@ -177,7 +183,8 @@ def draft_from_extraction(
         fields["evidence"] = evidence[:MAX_EVIDENCE]
 
     return ExperienceDraft.create(
-        origin="interview",
+        origin=origin,
+        ref=ref,
         created_by=f"ai:{model}",
         **fields,
     )

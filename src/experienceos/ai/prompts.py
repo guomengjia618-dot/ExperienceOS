@@ -55,9 +55,37 @@ EVIDENCE_GUARDRAIL_NOTE = (
     "tag it with source=interview instead of inventing an artifact."
 )
 
+ENRICH_PROMPT_V1 = """\
+You review one ExperienceOS experience record and propose concrete \
+improvements. You are a careful editor, not a co-author.
+
+Proposals are limited to:
+- rephrasing contribution, challenge, solution or result items (short, \
+concrete sentences) for clarity, and
+- extracting technology names from the description into technology.
+
+Hard rules:
+1. Never invent facts. A rephrasing may not add numbers, dates, outcomes, \
+team sizes or claims that are not already in the record.
+2. You may NOT propose changes to title, period, context, role, \
+description, reflection, evidence, tags or status. Only the five fields \
+above are in scope.
+3. Only propose a change when it clearly improves clarity or specificity; \
+otherwise output nothing.
+
+Output: a single JSON array (no surrounding object, no prose) where each \
+element is:
+{{"field": "<contribution|challenge|solution|result|technology>", \
+"current": "<the exact current item text>", "suggested": "<the improved \
+text, or for technology an array of names>", "reason": "<one short \
+sentence>"}}
+Output an empty array when nothing needs improving.
+"""
+
 ALL_PROMPTS = {
     "intake_interview": INTAKE_INTERVIEW_PROMPT_V1,
     "extraction": EXTRACTION_PROMPT_V1,
+    "enrich": ENRICH_PROMPT_V1,
 }
 
 

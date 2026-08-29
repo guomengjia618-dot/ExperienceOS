@@ -51,7 +51,7 @@
 对话历史不落盘、不上传（只发给所配置的 provider）；drafts/ 目录加入
 `.gitignore` 建议。
 
-## #012 `enrich` 命令（AI 提炼提案）
+## #012 `enrich` 命令（AI 提炼提案）✅ 2026-08-29
 
 **Labels**: `area/ai` `area/cli` · P0 · advanced
 
@@ -62,15 +62,15 @@
 
 ### 验收标准
 
-- [ ] `experienceos enrich <id>`：AI 读取记录，输出结构化**提案列表**：
+- [x] `experienceos enrich <id>`：AI 读取记录，输出结构化**提案列表**：
       每条提案 = 字段路径 + 现值 + 建议值 + 一句理由
-- [ ] 提案仅限：改写 contribution/challenge/solution/result 的表达、
+- [x] 提案仅限：改写 contribution/challenge/solution/result 的表达、
       从 description 中抽取技术词到 technology；**禁止改动 title、period、
       evidence 与任何数值事实**（服务端二次校验，越界提案直接丢弃）
-- [ ] 终端逐条 y/n 确认（默认 n），采纳的提案落盘并触发
+- [x] 终端逐条 y/n 确认（默认 n），采纳的提案落盘并触发
       `updated_at`；`--all-yes` 显式跳过确认但打印 diff 摘要
-- [ ] 附带：简历 PDF 提取（#009 的延伸）——pypdf 抽文本后走同一提取管线
-- [ ] MockProvider 测试：含越界提案的响应被正确拒绝
+- [x] 附带：简历 PDF 提取（#009 的延伸）——pypdf 抽文本后走同一提取管线
+- [x] MockProvider 测试：含越界提案的响应被正确拒绝
 
 ## #013 证据护栏（`lint`）✅ 2026-08-29
 

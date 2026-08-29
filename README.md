@@ -89,8 +89,26 @@ experienceos import resume:cv.txt
 小节，每个条目生成一份草稿：title、period（支持 `2021.06`、`2021年6月`、
 `至今/present` 等写法）、technology（内置技术词表 + 行内代码启发式），
 description 保留原句不改写；原文路径写入 `source.ref` 并挂为 `file`
-证据。PDF 简历依赖 AI 提取，将在 v0.3（M2）支持，届时走同一条
+证据。PDF 简历依赖 AI 提取（`[pdf]` extra），走同一条
 「AI 提案 → 人工确认」管线。
+
+## AI 智能（M2）
+
+先配置一个 OpenAI 兼容端点（GLM / DeepSeek / OpenAI / 本地 Ollama），
+API key 只从环境变量读取：
+
+```bash
+experienceos config set ai.model glm-4.7
+experienceos ai check        # 连通性自检，报告模型名与耗时
+```
+
+三个 AI 命令都遵循「AI 只提案，人来决定」：
+
+```bash
+experienceos interview       # STAR 采访 → 草稿，逐字段确认才落盘（--no-ai 纯向导）
+experienceos enrich <id>     # 表达改进提案，逐条 y/n（越界提案直接丢弃）
+experienceos lint            # 无证据的量化断言清单，可接入 CI（退出码 1）
+```
 
 ## Experience 数据模型
 
@@ -130,8 +148,8 @@ description 保留原句不改写；原文路径写入 `source.ref` 并挂为 `f
 | --- | --- | --- | --- |
 | M0 | 基础：数据模型 + 本地存储 + CLI | 0.1.0 | ✅ |
 | M1 | 导入：GitHub / 本地仓库 / 简历 Connector | 0.2.0 | ✅ |
-| M2 | 智能：AI 面试录入、enrich 提案、证据护栏 | 0.3.0 | 🚧 |
-| M3 | 输出：Markdown 档案 / JSON Resume 导出 | 0.4.0 | |
+| M2 | 智能：AI 面试录入、enrich 提案、证据护栏 | 0.3.0 | ✅ |
+| M3 | 输出：Markdown 档案 / JSON Resume 导出 | 0.4.0 | 🚧 |
 | M4 | 平台：API 服务、插件系统、FTS 索引 | 0.5.0 | |
 
 详见 `docs/ROADMAP.md` 与 `docs/issues/`（GitHub-ready 的 Issue 拆分）。

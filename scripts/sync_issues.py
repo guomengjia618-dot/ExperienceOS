@@ -66,6 +66,7 @@ DONE_NOTES = {
     "010": "Implemented in commit 226037a (provider wiring, config + ai check, MockProvider).",
     "013": "Implemented in commit 7196195 (core guardrails + lint command).",
     "011": "Implemented in commit 96d5a62 (interview command + ai/interview.py pipeline).",
+    "012": "Implemented in this milestone (enrich command, whitelist gate, PDF via [pdf] extra).",
 }
 
 DIFFICULTY_LABELS = {"good first issue", "intermediate", "advanced"}

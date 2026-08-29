@@ -21,8 +21,15 @@ from typing import Any
 import typer
 from pydantic import ValidationError as PydanticValidationError
 from rich.console import Console
+from rich.markup import escape
 
 from experienceos import __version__
+from experienceos.ai.enrich import (
+    apply_proposal,
+    build_enrich_messages,
+    normalize_proposals,
+    parse_proposals,
+)
 from experienceos.ai.interview import (
     build_extraction_messages,
     collect_evidence_candidates,
@@ -38,6 +45,7 @@ from experienceos.config import load_config, resolve_home, save_config
 from experienceos.connectors import (
     AuthoredExtractor,
     ExperienceDraft,
+    ResumeExtractor,
     default_registry,
 )
 from experienceos.core.errors import (
@@ -91,7 +99,9 @@ def _friendly_errors(func: Callable[..., Any]) -> Callable[..., Any]:
         try:
             return func(*args, **kwargs)
         except ExperienceOSError as exc:
-            err_console.print(f"[red]error:[/red] {exc}")
+            # escape: exception text may contain extras like 'experienceos[pdf]'
+            # which rich would otherwise eat as markup tags
+            err_console.print(f"[red]error:[/red] {escape(str(exc))}")
             raise typer.Exit(code=1) from exc
 
     return wrapper
@@ -250,6 +260,11 @@ def import_cmd(
     """
     store = _get_store(ctx)
     extractor = default_registry.find_handler(source)
+    if isinstance(extractor, ResumeExtractor) and source.lower().rstrip(".").endswith(
+        ".pdf"
+    ):
+        config = load_config(resolve_home(ctx.obj))
+        extractor.set_ai(build_provider(config.ai), config.ai.model)
     if author is not None:
         if not isinstance(extractor, AuthoredExtractor):
             raise ValidationError(
@@ -479,6 +494,60 @@ def _edit_field(experience: Experience, field_name: str) -> None:
             )
     except (PydanticValidationError, ValueError) as exc:
         err_console.print(f"[red]invalid value, keeping the old one:[/red] {exc}")
+
+
+# -- enrich (#012) ------------------------------------------------------------
+
+
+@app.command()
+@_friendly_errors
+def enrich(
+    ctx: typer.Context,
+    id: str = typer.Argument(..., help="ID or unique prefix"),
+    all_yes: bool = typer.Option(
+        False,
+        "--all-yes",
+        help="Apply every in-scope proposal without asking (prints a diff).",
+    ),
+) -> None:
+    """Ask the AI for improvement proposals on one record (#012).
+
+    Proposals may only rephrase contribution/challenge/solution/result
+    or move technology names out of the description. Anything else —
+    title, period, evidence, numbers — is rejected before you ever see
+    it, and every accepted change still lands as your own edit.
+    """
+    store = _get_store(ctx)
+    experience = _load_by_prefix(store, id)
+    config = load_config(resolve_home(ctx.obj))
+    provider = build_provider(config.ai)
+    raw = provider.complete(build_enrich_messages(experience))
+    accepted, rejected = normalize_proposals(parse_proposals(raw))
+    for reason in rejected:
+        err_console.print(f"[dim]dropped proposal: {reason}[/dim]")
+    if not accepted:
+        console.print("No in-scope proposals for this record.")
+        return
+
+    applied = 0
+    for proposal in accepted:
+        console.print(
+            f"[bold]{proposal.field}[/bold]: {proposal.current}\n"
+            f"  -> {proposal.suggested_display}"
+        )
+        if proposal.reason:
+            console.print(f"  [dim]({proposal.reason})[/dim]")
+        if not all_yes and not typer.confirm("Apply this proposal?", default=False):
+            continue
+        apply_proposal(experience, proposal)
+        applied += 1
+    if applied:
+        store.save(experience)  # bumps updated_at
+        console.print(
+            f"[green]Applied[/green] {applied} proposal(s) to {experience.id}"
+        )
+    else:
+        console.print("No proposals applied.")
 
 
 @app.command("list")

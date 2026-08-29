@@ -26,17 +26,17 @@ Issue 明细见 [issues/](issues/)，标签体系：`area/core` `area/cli`
 - ✅ #008 本地 git 仓库分析器（log / 语言统计 → 草稿 + 证据）
 - ✅ #009 简历导入器（Markdown / 纯文本解析，PDF 依赖 M2 的 AI 提取）
 
-## M2 — 智能（v0.3.0）🚧 下一个版本
+## M2 — 智能（v0.3.0）✅ 2026-08-29
 
 **目标**：AI 成为「不撒谎的采访者与整理员」。
 
 - ✅ #010 LLM Provider 接线（配置校验、offline mock provider、超时与重试）
 - ✅ #011 `interview` 命令（STAR 引导对话 → 草稿，全程引用证据）
-- #012 `enrich` 命令（对已有记录提出 contribution/result/reflection
-  改进提案，逐项 diff 确认）
+- ✅ #012 `enrich` 命令（对已有记录提出 contribution/result/reflection
+  改进提案，逐项 diff 确认；越界提案直接丢弃）
 - ✅ #013 证据护栏（`lint`：无证据的量化断言被标记而非静默接受）
 
-## M3 — 输出（v0.4.0）
+## M3 — 输出（v0.4.0）🚧 下一个版本
 
 **目标**：知识库的价值外显——一键产出可信材料。
 

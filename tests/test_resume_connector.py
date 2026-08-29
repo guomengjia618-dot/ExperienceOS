@@ -191,11 +191,53 @@ class TestErrors:
         with pytest.raises(ResumeError, match="resume file not found"):
             list(extractor.extract(str(tmp_path / "missing.md")))
 
-    def test_pdf_deferred_to_m2(self, extractor: ResumeExtractor, tmp_path: Path) -> None:
+    def test_pdf_without_ai_configuration_fails_readably(
+        self, extractor: ResumeExtractor, tmp_path: Path
+    ) -> None:
         pdf = tmp_path / "cv.pdf"
         pdf.write_bytes(b"%PDF-1.4 fake")
-        with pytest.raises(ResumeError, match="issue 012"):
+        with pytest.raises(ResumeError, match="PDF resumes need AI extraction"):
             list(extractor.extract(str(pdf)))
+
+    def test_pdf_goes_through_ai_extraction_pipeline(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import experienceos.connectors.resume.extractor as module
+        from experienceos.ai.mock import MockProvider
+
+        monkeypatch.setattr(
+            module, "_extract_pdf_text", lambda path: "Jane built pipelines"
+        )
+        provider = MockProvider(
+            '{"title": "Billing Pipeline", "type": "work", '
+            '"period": {"start": "2022-01"}}'
+        )
+        extractor = ResumeExtractor(provider=provider, model="test-model")
+        pdf = tmp_path / "cv.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        drafts = list(extractor.extract(str(pdf)))
+        assert len(drafts) == 1
+        exp = drafts[0].experience
+        assert exp.source.origin is SourceOrigin.resume
+        assert exp.source.ref == str(pdf)
+        assert exp.source.created_by == "ai:test-model"
+        assert exp.title == "Billing Pipeline"
+        assert any(e.kind is EvidenceKind.file for e in exp.evidence)
+
+    def test_pdf_extraction_retry_then_readable_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import experienceos.connectors.resume.extractor as module
+        from experienceos.ai.mock import MockProvider
+
+        monkeypatch.setattr(module, "_extract_pdf_text", lambda path: "text")
+        provider = MockProvider("nope", "still nope")
+        extractor = ResumeExtractor(provider=provider, model="m")
+        pdf = tmp_path / "cv.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        with pytest.raises(ResumeError, match="failed twice"):
+            list(extractor.extract(str(pdf)))
+        assert provider.replies_used == 2
 
     def test_foreign_scheme_readable_error(self, extractor: ResumeExtractor) -> None:
         with pytest.raises(ConnectorError, match="does not handle scheme"):
@@ -223,10 +265,12 @@ class TestCliImport:
         assert result.exit_code == 0
         assert len(ExperienceStore(cli_env).list_all()) == 3
 
-    def test_import_pdf_fails_with_guidance(self, cli_env, tmp_path: Path) -> None:
+    def test_import_pdf_without_pypdf_fails_with_guidance(
+        self, cli_env, tmp_path: Path
+    ) -> None:
         pdf = tmp_path / "cv.pdf"
         pdf.write_bytes(b"%PDF-1.4 fake")
         result = runner.invoke(app, ["import", f"resume:{pdf}", "--yes"])
         output = result.output + str(getattr(result, "stderr", "") or "")
         assert result.exit_code == 1
-        assert "issue 012" in output
+        assert "experienceos[pdf]" in output
