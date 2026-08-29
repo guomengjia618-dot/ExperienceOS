@@ -24,7 +24,8 @@ from pathlib import Path
 from pydantic import ValidationError as PydanticValidationError
 
 from experienceos.core.errors import AmbiguousIdError, NotFoundError, StorageError
-from experienceos.core.models import Experience, utcnow
+from experienceos.core.models import SCHEMA_VERSION, Experience, utcnow
+from experienceos.storage.migrations import needs_migration, run_migrations
 
 logger = logging.getLogger("experienceos.storage")
 
@@ -43,6 +44,11 @@ class ExperienceStore:
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
         self.experiences_dir = self.root / "experiences"
+
+    @property
+    def backup_dir(self) -> Path:
+        """Pre-rewrite backups land here (see #020)."""
+        return self.root / "backup"
 
     # -- paths ---------------------------------------------------------------
 
@@ -91,10 +97,60 @@ class ExperienceStore:
         raw_id = path.stem
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return raw_id, None, str(exc)
+        try:
+            data = self._migrate_in_place(path, data)
+        except (StorageError, PydanticValidationError, ValueError) as exc:
+            return raw_id, None, f"migration failed: {exc}"
+        try:
             experience = Experience.from_dict(data)
-        except (OSError, json.JSONDecodeError, PydanticValidationError, ValueError) as exc:
+        except (PydanticValidationError, ValueError) as exc:
             return raw_id, None, str(exc)
         return experience.id, experience, None
+
+    def _migrate_in_place(self, path: Path, data: object) -> object:
+        """Auto-migrate an outdated record: back up, rewrite, return new data (#020).
+
+        No-op for current-version records. The original file is preserved
+        under ``<home>/backup/`` before the first rewrite attempt.
+        """
+        if not needs_migration(data):
+            return data
+        assert isinstance(data, dict)  # needs_migration guarantees this
+        self.backup_dir.mkdir(parents=True, exist_ok=True)
+        stamp = utcnow().strftime("%Y%m%d-%H%M%S")
+        backup = self.backup_dir / f"{path.stem}-{stamp}.json"
+        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        migrated, applied = run_migrations(data)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(
+            json.dumps(migrated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        os.replace(tmp, path)
+        logger.info("migrated %s to schema v%s", path.name, applied[-1])
+        return migrated
+
+    def pending_migrations(self) -> list[tuple[Path, int]]:
+        """Files whose schema_version is older than this build's."""
+        pending: list[tuple[Path, int]] = []
+        if not self.experiences_dir.is_dir():
+            return pending
+        for path in sorted(self.experiences_dir.glob("*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if needs_migration(data):
+                pending.append((path, int(data.get("schema_version", 1))))
+        return pending
+
+    def migrate_file(self, path: Path) -> int:
+        """Migrate one file (with backup); return the new schema version."""
+        data = json.loads(path.read_text(encoding="utf-8"))
+        migrated = self._migrate_in_place(path, data)
+        assert isinstance(migrated, dict)
+        return int(migrated.get("schema_version", SCHEMA_VERSION))
 
     def list_all(self) -> list[Experience]:
         """Load every valid record, newest first (IDs are time-sortable)."""

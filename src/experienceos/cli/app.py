@@ -57,6 +57,7 @@ from experienceos.core.errors import (
     ValidationError,
 )
 from experienceos.core.models import (
+    SCHEMA_VERSION,
     Experience,
     ExperienceType,
     Period,
@@ -954,6 +955,39 @@ def lint(
         f"{len({issue.experience_id for issue in issues})} record(s)."
     )
     raise typer.Exit(code=1)
+
+
+# -- migrations (#020) --------------------------------------------------------
+
+
+@app.command("migrate")
+@_friendly_errors
+def migrate(
+    ctx: typer.Context,
+    check: bool = typer.Option(
+        False, "--check", help="Only report pending migrations; change nothing."
+    ),
+) -> None:
+    """Bring stored records up to the current schema version (#020).
+
+    Reads migrate transparently; the original file is always backed up
+    under <home>/backup/ before a rewrite.
+    """
+    store = _get_store(ctx)
+    pending = store.pending_migrations()
+    if not pending:
+        console.print(f"[green]All record(s) are at schema v{SCHEMA_VERSION}.[/green]")
+        return
+    for path, version in pending:
+        console.print(f"pending: {path.name} (v{version} -> v{SCHEMA_VERSION})")
+    if check:
+        raise typer.Exit(code=1)
+    for path, _version in pending:
+        new_version = store.migrate_file(path)
+        console.print(f"[green]migrated[/green] {path.name} -> v{new_version}")
+    console.print(
+        f"{len(pending)} record(s) migrated; originals kept in {store.backup_dir}"
+    )
 
 
 # -- plugins (#019) -----------------------------------------------------------
