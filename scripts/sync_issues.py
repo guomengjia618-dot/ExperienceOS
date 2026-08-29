@@ -60,6 +60,8 @@ DONE_NOTES = {
     "005": "Delivered in v0.1.0 (tag v0.1.0).",
     "005b": "Delivered in v0.1.0 (tag v0.1.0).",
     "006": "Implemented in commit c9d0cd8 (connector framework + import command).",
+    "007": "Implemented in commit a49eca0 (GitHub importer); docs in 21ef342.",
+    "008": "Implemented in commit fb5ff5f (local git repository analyzer).",
 }
 
 DIFFICULTY_LABELS = {"good first issue", "intermediate", "advanced"}
