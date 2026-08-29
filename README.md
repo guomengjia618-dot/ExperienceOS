@@ -129,8 +129,8 @@ description 保留原句不改写；原文路径写入 `source.ref` 并挂为 `f
 | Milestone | 主题 | 版本 | 状态 |
 | --- | --- | --- | --- |
 | M0 | 基础：数据模型 + 本地存储 + CLI | 0.1.0 | ✅ |
-| M1 | 导入：GitHub / 本地仓库 / 简历 Connector | 0.2.0 | 🚧 |
-| M2 | 智能：AI 面试录入、enrich 提案、证据护栏 | 0.3.0 | |
+| M1 | 导入：GitHub / 本地仓库 / 简历 Connector | 0.2.0 | ✅ |
+| M2 | 智能：AI 面试录入、enrich 提案、证据护栏 | 0.3.0 | 🚧 |
 | M3 | 输出：Markdown 档案 / JSON Resume 导出 | 0.4.0 | |
 | M4 | 平台：API 服务、插件系统、FTS 索引 | 0.5.0 | |
 

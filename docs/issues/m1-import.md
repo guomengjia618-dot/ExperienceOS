@@ -84,7 +84,7 @@ commit / PR / issue，生成一份有证据的草稿。
 机器）；`--author` 走 git 原生的 `Name <email>` 模式匹配。contribution 截取
 最近 30 条去重主题，context 注明截断。
 
-## #009 简历导入器（文本）
+## #009 简历导入器（文本）✅ 2026-08-29
 
 **Labels**: `area/connector` · P1 · intermediate
 
@@ -94,14 +94,14 @@ commit / PR / issue，生成一份有证据的草稿。
 
 ### 验收标准
 
-- [ ] `experienceos import resume:cv.md`：识别「项目/经历」小节与条目
+- [x] `experienceos import resume:cv.md`：识别「项目/经历」小节与条目
       （支持常见中英文标题：项目经历 / 工作经历 / Projects / Experience）
-- [ ] 每个条目 → 一份草稿：title、period（若可解析）、technology
+- [x] 每个条目 → 一份草稿：title、period（若可解析）、technology
       （行内技术名词启发式）、description（原句保留，不改写）
-- [ ] 原文路径写入 `source.ref`；不使用 LLM（本 Issue 纯规则）
-- [ ] 解析不出任何条目时给出明确失败信息
-- [ ] fixture 覆盖中英文简历各一份
-- [ ] PDF 支持明确推迟到 M2（#012 附带，依赖 AI 提取），在 `--help`
+- [x] 原文路径写入 `source.ref`；不使用 LLM（本 Issue 纯规则）
+- [x] 解析不出任何条目时给出明确失败信息
+- [x] fixture 覆盖中英文简历各一份
+- [x] PDF 支持明确推迟到 M2（#012 附带，依赖 AI 提取），在 `--help`
       中说明
 
 ### 技术说明
