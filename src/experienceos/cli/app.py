@@ -56,7 +56,7 @@ from experienceos.core.errors import (
     StorageError,
     ValidationError,
 )
-from experienceos.core.guardrails import find_unsupported_claims, lint_experiences
+from experienceos.core.guardrails import lint_experiences
 from experienceos.core.models import (
     Experience,
     ExperienceType,
@@ -65,6 +65,12 @@ from experienceos.core.models import (
     is_valid_year_month,
 )
 from experienceos.exporters import ExportOptions, default_exporter_registry
+from experienceos.stats import (
+    aggregate_stats,
+    evidence_coverage_by_year,
+    technology_cooccurrence,
+    technology_timeline,
+)
 from experienceos.storage import ExperienceStore, SearchQuery, search
 
 app = typer.Typer(
@@ -833,31 +839,75 @@ def delete(
 
 @app.command()
 @_friendly_errors
-def stats(ctx: typer.Context) -> None:
+def stats(
+    ctx: typer.Context,
+    json_output: bool = typer.Option(
+        False, "--json", help="Machine-readable output (used by exports and the API)."
+    ),
+) -> None:
     """Summarize the knowledge base: coverage, types and top technologies."""
     store = _get_store(ctx)
     experiences = store.list_all()
     if not experiences:
         console.print("Nothing recorded yet. Run `experienceos add` to start.")
         return
-    with_evidence = sum(1 for e in experiences if e.evidence)
+    summary = aggregate_stats(experiences)
+    if json_output:
+        console.print_json(json.dumps(summary, ensure_ascii=False))
+        return
     console.print(
-        f"[bold]{len(experiences)}[/bold] experiences | "
-        f"evidence coverage [bold]{with_evidence / len(experiences):.0%}[/bold] | "
-        f"with reflection: "
-        f"{sum(1 for e in experiences if e.reflection) / len(experiences):.0%}"
+        f"[bold]{summary['total']}[/bold] experiences | "
+        f"evidence coverage [bold]{summary['evidence_coverage']:.0%}[/bold] | "
+        f"with reflection: {summary['with_reflection'] / summary['total']:.0%}"
     )
-    type_counts = Counter(e.type.value for e in experiences)
-    console.print("By type: " + " | ".join(f"{k} {v}" for k, v in type_counts.most_common()))
-    status_counts = Counter(e.status.value for e in experiences)
-    console.print("By status: " + " | ".join(f"{k} {v}" for k, v in status_counts.most_common()))
-    tech_counts = Counter(t.casefold() for e in experiences for t in e.technology)
-    if tech_counts:
+    console.print(
+        "By type: "
+        + " | ".join(f"{k} {v}" for k, v in summary["by_type"].items())
+    )
+    console.print(
+        "By status: "
+        + " | ".join(f"{k} {v}" for k, v in summary["by_status"].items())
+    )
+    if summary["top_technologies"]:
         console.print(
-            "Top technologies: " + " | ".join(k for k, _ in tech_counts.most_common(10))
+            "Top technologies: " + " | ".join(summary["top_technologies"])
         )
-    unsupported = sum(len(find_unsupported_claims(e)) for e in experiences)
-    console.print(f"Unsupported claims (no evidence): {unsupported}")
+    console.print(
+        f"Unsupported claims (no evidence): {summary['unsupported_claims']}"
+    )
+
+
+@app.command()
+@_friendly_errors
+def profile(ctx: typer.Context) -> None:
+    """Skill profile: technology timeline, co-occurrence and coverage (#017)."""
+    store = _get_store(ctx)
+    experiences = store.list_all()
+    if not experiences:
+        console.print("Nothing recorded yet. Run `experienceos add` to start.")
+        return
+
+    console.print("[bold]Technology timeline[/bold] (by first use)")
+    for span in technology_timeline(experiences):
+        arrow = f"{span.first} ~ {span.last}{'+ ongoing' if span.ongoing else ''}"
+        console.print(f"  {span.name.ljust(16)} {arrow.ljust(28)} {span.records} record(s)")
+
+    console.print("\n[bold]Frequent technology pairs[/bold]")
+    pairs = technology_cooccurrence(experiences)
+    if pairs:
+        for first, second, count in pairs:
+            console.print(f"  {first} + {second}: {count}")
+    else:
+        console.print("  (no records list two technologies yet)")
+
+    console.print("\n[bold]Evidence coverage by year[/bold]")
+    for year, covered, total in evidence_coverage_by_year(experiences):
+        console.print(f"  {year}: {covered / total:.0%} ({covered}/{total})")
+
+    console.print("\n[bold]By type[/bold]")
+    type_counts = Counter(exp.type.value for exp in experiences)
+    for name, count in type_counts.most_common():
+        console.print(f"  {name}: {count}")
 
 
 @app.command()
