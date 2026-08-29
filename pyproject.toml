@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "experienceos"
-version = "0.4.0"
+version = "0.5.0"
 description = "ExperienceOS - an open-source personal experience operating system. Never forget what you have built."
 readme = "README.md"
 license = { file = "LICENSE" }

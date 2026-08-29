@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-08-29
+## [0.5.0] - 2026-08-29
+
+### Added
+
+- Service layer + FastAPI (#018): `services/` holds the use cases (CLI and
+  API are thin shells); optional `[api]` extra serves read endpoints
+  (/experiences, /search, /stats, /lint) plus draft-only creation via
+  `experienceos-serve`.
+- Plugin system (#019): built-ins declared as entry points; third-party
+  packages register connectors/exporters by declaring their own;
+  `experienceos plugins list` shows source, version and load state.
+- Schema migrations (#020): ordered version steps, transparent read-path
+  migration with backup under `<home>/backup/`, `migrate --check`.
+- Sync & backup (#021): `experienceos sync [--init|--push REMOTE]` commits
+  the home with git; `experienceos backup` writes a restore-ready zip.
+- FTS index (#022): rebuildable SQLite FTS5 index (CJK unigram split);
+  text queries use it only above the record threshold; files stay the
+  source of truth. Benchmark script included.
+
 
 ### Added
 
@@ -83,7 +101,8 @@ First public foundation release (Milestone 0).
 - CI workflow (GitHub Actions: ruff + pytest on Python 3.10-3.13,
   Ubuntu + Windows).
 
-[Unreleased]: https://github.com/experienceos/experienceos/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/experienceos/experienceos/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/experienceos/experienceos/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/experienceos/experienceos/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/experienceos/experienceos/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/experienceos/experienceos/compare/v0.1.0...v0.2.0

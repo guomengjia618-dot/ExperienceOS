@@ -45,15 +45,15 @@ Issue 明细见 [issues/](issues/)，标签体系：`area/core` `area/cli`
 - ✅ #016 JSON Resume 兼容导出
 - ✅ #017 技能画像与统计（技术频率时间线、共现 Top-N）
 
-## M4 — 平台（v0.5.0）🚧 下一个版本
+## M4 — 平台（v0.5.0）✅ 2026-08-29
 
 **目标**：从个人工具长成生态。
 
-- #018 FastAPI 服务（OpenAPI 文档，复用服务层）
-- #019 插件系统（entry-points 注册 connector / exporter）
-- #020 schema 迁移框架（schema_version 升级管线）
-- #021 备份与同步（home 目录 git 化：`experienceos sync`）
-- #022 SQLite FTS5 索引（记录 >1k 时的性能路径，索引可重建）
+- ✅ #018 FastAPI 服务（OpenAPI 文档，复用服务层）
+- ✅ #019 插件系统（entry-points 注册 connector / exporter）
+- ✅ #020 schema 迁移框架（schema_version 升级管线）
+- ✅ #021 备份与同步（home 目录 git 化：`experienceos sync`）
+- ✅ #022 SQLite FTS5 索引（记录 >1k 时的性能路径，索引可重建）
 
 ## Backlog（暂不排期）
 

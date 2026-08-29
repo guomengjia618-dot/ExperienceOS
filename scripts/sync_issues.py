@@ -71,6 +71,11 @@ DONE_NOTES = {
     "015": "Implemented in commit 3152a5b (Markdown profile/timeline + golden tests).",
     "016": "Implemented in commit 8a5b499 (JSON Resume exporter).",
     "017": "Implemented in commit 5b128c6 (profile, stats --json, stats module).",
+    "018": "Implemented in commit f010311 (services layer + FastAPI, [api] extra).",
+    "019": "Implemented in commit b05433d (entry-point plugins + plugins list).",
+    "020": "Implemented in commit 6753210 (migration framework + backup-on-rewrite).",
+    "021": "Implemented in commit bf6e32a (sync/backup via services/homeops.py).",
+    "022": "Implemented in commit 319bc75 (FTS5 index, threshold dispatch, benchmark).",
 }
 
 DIFFICULTY_LABELS = {"good first issue", "intermediate", "advanced"}

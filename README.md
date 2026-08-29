@@ -110,6 +110,16 @@ experienceos enrich <id>     # 表达改进提案，逐条 y/n（越界提案直
 experienceos lint            # 无证据的量化断言清单，可接入 CI（退出码 1）
 ```
 
+## 平台（M4）
+
+```bash
+experienceos sync --init      # home 目录 git 化（--push origin 推送，注意私有仓库）
+experienceos backup           # 全量打包成 zip（含 config）
+experienceos index rebuild    # 可选 FTS 索引（大库加速，可随时删除重建）
+pip install 'experienceos[api]' && experienceos-serve   # 本地 REST API
+experienceos plugins list     # entry-points 插件（第三方 connector/exporter）
+```
+
 ## 导出（M3）
 
 导出物永远是经历的忠实投影，默认只导出 `active` 记录（draft 不外泄）：
@@ -162,7 +172,7 @@ experienceos stats --json                       # 机器可读统计
 | M1 | 导入：GitHub / 本地仓库 / 简历 Connector | 0.2.0 | ✅ |
 | M2 | 智能：AI 面试录入、enrich 提案、证据护栏 | 0.3.0 | ✅ |
 | M3 | 输出：Markdown 档案 / JSON Resume 导出 | 0.4.0 | ✅ |
-| M4 | 平台：API 服务、插件系统、FTS 索引 | 0.5.0 | 🚧 |
+| M4 | 平台：API 服务、插件系统、FTS 索引 | 0.5.0 | ✅ |
 
 详见 `docs/ROADMAP.md` 与 `docs/issues/`（GitHub-ready 的 Issue 拆分）。
 
