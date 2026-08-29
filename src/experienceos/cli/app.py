@@ -67,6 +67,7 @@ from experienceos.core.models import (
 from experienceos.exporters import ExportOptions, default_exporter_registry
 from experienceos.plugins import load_plugins, plugin_summary
 from experienceos.services import experiences as services
+from experienceos.services.homeops import backup_home, git_sync
 from experienceos.stats import (
     evidence_coverage_by_year,
     technology_cooccurrence,
@@ -955,6 +956,76 @@ def lint(
         f"{len({issue.experience_id for issue in issues})} record(s)."
     )
     raise typer.Exit(code=1)
+
+
+# -- sync & backup (#021) -----------------------------------------------------
+
+
+@app.command()
+@_friendly_errors
+def sync(
+    ctx: typer.Context,
+    push: str | None = typer.Option(
+        None, "--push", help="Remote to push after committing (e.g. origin)."
+    ),
+    init: bool = typer.Option(
+        False, "--init", help="Initialize a git repository in the home if none exists."
+    ),
+) -> None:
+    """Version the home directory with git (#021).
+
+    Commits every change with a message recording the record count.
+    If the home is not a repository yet, --init sets one up. When
+    pushing, make sure the remote is PRIVATE — this is your personal
+    knowledge base.
+    """
+    home = resolve_home(ctx.obj)
+    if not home.exists():
+        raise NotInitializedError(
+            f"{home} is not initialized. Run `experienceos init` first."
+        )
+    store = ExperienceStore(home)
+    count = len(store.all_ids())
+    drafts = sum(1 for e in store.list_all() if e.status is Status.draft)
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    message = f"experienceos sync: {count} record(s) ({drafts} draft) at {stamp}"
+    report = git_sync(home, message, push_remote=push, init=init)
+    if report.initialized:
+        console.print(f"[green]Initialized[/green] git repository at {home}")
+    if report.committed:
+        console.print(f"[green]Committed[/green] {message}")
+    else:
+        console.print("Already up to date — nothing to commit.")
+    if report.pushed:
+        console.print(f"[green]Pushed[/green] to {push} (keep the remote private!)")
+
+
+@app.command()
+@_friendly_errors
+def backup(
+    ctx: typer.Context,
+    out: Path | None = typer.Option(
+        None, "--out", "-o", help="Archive path (default: ./experienceos-backup-<stamp>.zip)."
+    ),
+) -> None:
+    """Archive the whole home directory as a zip (#021).
+
+    Includes config.toml and every experience; excludes git internals,
+    scratch files and previous backups — the JSON files are the source
+    of truth, so the archive alone restores everything.
+    """
+    home = resolve_home(ctx.obj)
+    if not home.exists():
+        raise NotInitializedError(
+            f"{home} is not initialized. Run `experienceos init` first."
+        )
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = out or Path.cwd() / f"experienceos-backup-{stamp}.zip"
+    archive, count = backup_home(home, target)
+    console.print(
+        f"[green]Backup written[/green] {archive} ({count} file(s))",
+        soft_wrap=True,
+    )
 
 
 # -- migrations (#020) --------------------------------------------------------
