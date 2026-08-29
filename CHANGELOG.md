@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Resume importer (#009): rule-based (no LLM) parsing of Markdown/plain-text
+  resumes into experience drafts — common CN/EN section headings, entry
+  splitting on headings/bold/date lines, `YYYY-MM` period parsing (incl.
+  `至今/present`, year-only ranges), curated technology keywords plus inline
+  code spans, verbatim descriptions, and the source file attached as `file`
+  evidence with `source.ref`. Undated entries carry an explicit `1970-01`
+  placeholder tagged `undated`; PDF input is rejected until the M2 AI
+  extraction path (#012).
 - Local git repository analyzer (#008): read-only `git log` analysis of a
   local checkout — activity window, author-attributed commit count and
   median change size, extension-based language composition (built-in map,

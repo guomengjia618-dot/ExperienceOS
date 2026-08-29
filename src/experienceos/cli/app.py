@@ -206,7 +206,9 @@ def import_cmd(
     ctx: typer.Context,
     source: str = typer.Argument(
         ...,
-        help="Source to import: github:owner/repo, resume:cv.md, or a local path.",
+        help="Source to import: github:owner/repo, resume:cv.md, or a "
+        "local path. PDF resumes arrive with v0.3 AI extraction "
+        "(issue 012); use Markdown/plain text for now.",
     ),
     yes: bool = typer.Option(
         False, "--yes", "-y", help="Save drafts without the preview confirmation."

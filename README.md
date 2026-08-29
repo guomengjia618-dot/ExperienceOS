@@ -76,6 +76,22 @@ experienceos import /path/to/repo --author me@example.com
 evidence 挂仓库本地路径；若 `origin` 指向 GitHub 会自动附上仓库 URL。
 分析只用 `git log` / `git ls-files`，语言按扩展名内置映射统计。
 
+### 导入旧简历
+
+把 Markdown / 纯文本简历按规则解析成若干经历草稿（纯规则，不用 LLM）：
+
+```bash
+experienceos import resume:cv.md
+experienceos import resume:cv.txt
+```
+
+识别「项目经历 / 工作经历 / 实习经历 / Projects / Experience」等常见
+小节，每个条目生成一份草稿：title、period（支持 `2021.06`、`2021年6月`、
+`至今/present` 等写法）、technology（内置技术词表 + 行内代码启发式），
+description 保留原句不改写；原文路径写入 `source.ref` 并挂为 `file`
+证据。PDF 简历依赖 AI 提取，将在 v0.3（M2）支持，届时走同一条
+「AI 提案 → 人工确认」管线。
+
 ## Experience 数据模型
 
 每个经历是一个统一的 `Experience` 抽象——不只是代码项目，还包括毕业设计、
