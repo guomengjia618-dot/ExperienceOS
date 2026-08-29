@@ -74,6 +74,7 @@ from experienceos.stats import (
     technology_timeline,
 )
 from experienceos.storage import ExperienceStore, SearchQuery, search
+from experienceos.storage.fts import build_index, index_path
 
 app = typer.Typer(
     name="experienceos",
@@ -956,6 +957,30 @@ def lint(
         f"{len({issue.experience_id for issue in issues})} record(s)."
     )
     raise typer.Exit(code=1)
+
+
+# -- search index (#022) ------------------------------------------------------
+
+index_app = typer.Typer(help="Manage the optional FTS search index.")
+app.add_typer(index_app, name="index")
+
+
+@index_app.command("rebuild")
+@_friendly_errors
+def index_rebuild(ctx: typer.Context) -> None:
+    """Rebuild the SQLite FTS5 index from the record files (#022).
+
+    The index is a disposable cache over the JSON files: text queries
+    use it only when the library exceeds the size threshold, and
+    deleting the file changes nothing except speed.
+    """
+    store = _get_store(ctx)
+    home = resolve_home(ctx.obj)
+    count = build_index(home, store.list_all())
+    console.print(
+        f"[green]Indexed[/green] {count} record(s) -> {index_path(home)}",
+        soft_wrap=True,
+    )
 
 
 # -- sync & backup (#021) -----------------------------------------------------

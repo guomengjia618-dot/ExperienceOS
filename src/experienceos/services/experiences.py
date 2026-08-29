@@ -8,6 +8,8 @@ prompt; they raise ``ExperienceOSError`` subclasses and return data.
 
 from __future__ import annotations
 
+import os
+from dataclasses import replace
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
@@ -18,12 +20,15 @@ from experienceos.core.guardrails import lint_experiences
 from experienceos.core.models import Experience, Status
 from experienceos.stats import aggregate_stats
 from experienceos.storage import ExperienceStore, SearchQuery, search
+from experienceos.storage import fts as fts_module
 from experienceos.storage.store import LoadIssue
+
+THRESHOLD_ENV = "EXPERIENCEOS_FTS_THRESHOLD"
 
 
 def list_experiences(store: ExperienceStore, query: SearchQuery) -> list[Experience]:
     """Filtered, scored-ordered records for a query."""
-    return [result.experience for result in search(store.list_all(), query)]
+    return run_query(store, query)
 
 
 def get_experience(store: ExperienceStore, id_or_prefix: str) -> Experience:
@@ -33,7 +38,37 @@ def get_experience(store: ExperienceStore, id_or_prefix: str) -> Experience:
 
 def search_experiences(store: ExperienceStore, query: SearchQuery) -> list[Experience]:
     """Free-text search; ranked results flattened to records."""
-    return [result.experience for result in search(store.list_all(), query)]
+    return run_query(store, query)
+
+
+def run_query(store: ExperienceStore, query: SearchQuery) -> list[Experience]:
+    """Dispatch a query: FTS index when it pays off, memory scan otherwise (#022).
+
+    The index only ever accelerates the *text* part; type/status/tag and
+    period filters are re-applied in memory, and stale index entries
+    (deleted files) drop out against the store. Files stay the source of
+    truth: no index, small library, or ``EXPERIENCEOS_FTS_THRESHOLD=0``
+    all mean the pure in-memory path.
+    """
+    experiences = store.list_all()
+    if query.text and _fts_worth_it(store.root, len(experiences)):
+        ids = set(fts_module.fts_search(store.root, query.text))
+        if ids:
+            by_id = {exp.id: exp for exp in experiences}
+            candidates = [by_id[exp_id] for exp_id in ids if exp_id in by_id]
+            filtered = search(candidates, replace(query, text=""))
+            return [result.experience for result in filtered]
+    return [result.experience for result in search(experiences, query)]
+
+
+def _fts_worth_it(home: Any, record_count: int) -> bool:
+    try:
+        threshold = int(os.environ.get(THRESHOLD_ENV, str(fts_module.DEFAULT_THRESHOLD)))
+    except ValueError:
+        threshold = fts_module.DEFAULT_THRESHOLD
+    if threshold <= 0 or record_count < threshold:
+        return False
+    return fts_module.index_exists(home)
 
 
 def summarize(store: ExperienceStore) -> dict[str, Any]:

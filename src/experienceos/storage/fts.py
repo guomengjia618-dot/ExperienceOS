@@ -1,0 +1,113 @@
+"""SQLite FTS5 search index (#022): a rebuildable derivative.
+
+ADR D1 stays intact: the JSON files are the source of truth; this index
+is a pure cache. Deleting ``<home>/search.index`` costs nothing — the
+next rebuild recreates it, and every query path falls back to the
+in-memory scan whenever the index is absent or the library is smaller
+than the threshold (services layer decides).
+
+Tokenizer: FTS5 ``unicode61`` plus a CJK unigram split — contiguous
+CJK runs are spaced out so each character becomes its own token
+("搜索引擎" -> "搜 索 引 擎"). The same transform runs on queries, so
+CJK AND-queries behave like substring search. Bigram tokenization was
+evaluated and deferred: unigrams keep single-character queries working
+and cost one extra join row per character — plenty at personal-library
+scale.
+"""
+
+from __future__ import annotations
+
+import re
+import sqlite3
+from collections.abc import Iterable
+from pathlib import Path
+
+from experienceos.core.models import Experience
+
+INDEX_FILENAME = "search.index"
+DEFAULT_THRESHOLD = 1000
+FETCH_LIMIT = 500  # FTS hits fetched before in-memory filters narrow them
+
+_CJK_RE = re.compile(r"([\u4e00-\u9fff])")
+
+
+def index_path(home: Path) -> Path:
+    return Path(home) / INDEX_FILENAME
+
+
+def index_exists(home: Path) -> bool:
+    return index_path(home).exists()
+
+
+def delete_index(home: Path) -> bool:
+    path = index_path(home)
+    if not path.exists():
+        return False
+    path.unlink()
+    return True
+
+
+def build_index(home: Path, experiences: Iterable[Experience]) -> int:
+    """(Re)create the index from *experiences*; return the record count."""
+    path = index_path(home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("DROP TABLE IF EXISTS experiences")
+        connection.execute(
+            "CREATE VIRTUAL TABLE experiences USING fts5("
+            "id UNINDEXED, title, body, tokenize='unicode61')"
+        )
+        count = 0
+        for experience in experiences:
+            connection.execute(
+                "INSERT INTO experiences (id, title, body) VALUES (?, ?, ?)",
+                (experience.id, _tokenize(experience.title), _tokenize(_flatten(experience))),
+            )
+            count += 1
+        connection.commit()
+    finally:
+        connection.close()
+    return count
+
+
+def fts_search(home: Path, text: str, limit: int | None = None) -> list[str]:
+    """Ranked experience ids for *text*; empty query or index -> []."""
+    terms = _tokenize(text).split()
+    if not terms or not index_exists(home):
+        return []
+    connection = sqlite3.connect(index_path(home))
+    try:
+        rows = connection.execute(
+            "SELECT id FROM experiences WHERE experiences MATCH ? "
+            "ORDER BY rank LIMIT ?",
+            (" ".join(terms), min(limit or FETCH_LIMIT, FETCH_LIMIT)),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []  # malformed MATCH string etc. — callers fall back safely
+    finally:
+        connection.close()
+    return [row[0] for row in rows]
+
+
+def _flatten(experience: Experience) -> str:
+    parts = [
+        experience.title,
+        experience.context,
+        experience.role,
+        experience.description,
+        experience.reflection,
+        *experience.technology,
+        *experience.contribution,
+        *experience.challenge,
+        *experience.solution,
+        *experience.result,
+        *experience.tags,
+        *(evidence.location for evidence in experience.evidence),
+    ]
+    return " ".join(part for part in parts if part)
+
+
+def _tokenize(text: str) -> str:
+    """Space out CJK characters so unicode61 indexes each as a token."""
+    return _CJK_RE.sub(r" \1 ", text)
