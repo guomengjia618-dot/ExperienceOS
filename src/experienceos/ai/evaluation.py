@@ -1,4 +1,4 @@
-"""Reproducible, human-labelled evaluation for the evidence brief workflow."""
+"""Reproducible evaluation with explicit per-case data provenance."""
 
 from __future__ import annotations
 

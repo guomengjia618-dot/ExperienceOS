@@ -45,7 +45,7 @@ class ToolEvent(BaseModel):
 
 
 class WorkflowState(BaseModel):
-    """Durable state; no credentials or hidden model reasoning are stored."""
+    """Durable state; no credentials or plaintext hidden reasoning are stored."""
 
     model_config = ConfigDict(extra="forbid")
 

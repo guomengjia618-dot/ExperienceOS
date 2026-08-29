@@ -113,6 +113,10 @@ OpenAI-compatible Chat Completions 请求 `/chat/completions`；Responses Adapte
 请求 `/responses`，并把 `response.output` 中的 function-call item 与本地
 `function_call_output` 按 `call_id` 回放。工作流不依赖具体 Adapter。
 
+Responses 请求使用 `store=false`。为兼容需要跨轮保留推理状态的模型，请求显式
+包含 `reasoning.encrypted_content`，检查点只回放 API 返回的加密状态与响应项，
+不保存明文隐藏推理。
+
 两个 Adapter 共用 HTTP transport：按类别记录 timeout / network / rate_limit /
 server_error / http_error，支持有限次数的指数退避、jitter、`Retry-After` 和总重试
 时间预算。成功或失败都会产生不含 prompt 的 request metrics；request ID、延迟、

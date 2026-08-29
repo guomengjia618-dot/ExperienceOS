@@ -133,7 +133,8 @@ flowchart LR
 实现证据：
 
 - 两个真实 API Adapter：保留 OpenAI-compatible Chat Completions，并增加 OpenAI
-  Responses API；API Key 只从环境变量读取，不进入配置、消息或检查点。
+  Responses API；Responses 采用 `store=false`，多轮推理仅回放 API 返回的加密
+  reasoning 状态。API Key 只从环境变量读取，不进入配置、消息或检查点。
 - 严格结构化输出：请求 JSON Schema，返回后再用 Pydantic 本地校验。
 - 3 个实际只读 Tools：`search_experiences`、`get_experience`、
   `get_evidence_stats`。
@@ -154,6 +155,7 @@ python -m pytest
 ruff check .
 python examples/agent_demo.py --home .experienceos-demo
 experienceos ai eval --report .experienceos-demo/reports/recorded-eval.json
+python -m build --wheel
 ```
 
 离线 Demo 使用录制的模型回复，但 3 个 Tools、真实文件存储、严格 Schema、证据
@@ -197,7 +199,8 @@ experienceos ai brief --resume wf_...
 | 无 Key Demo、3 Tools、Schema、grounding、checkpoint/resume | 已实现并由自动测试覆盖 |
 | 9 条 AI 辅助起草的合成回归集 | 已实现、未独立人工复核；只表示回归预期，不表示模型准确率 |
 | Chat Completions / Responses HTTP Adapter | 已实现并通过 mock HTTP 测试 |
-| `ai check` / `ai brief` / `ai eval --live` 在线结果 | **尚未发布：当前开发环境没有 API Key** |
+| 2026-08-29 本地集成审计 | 全仓 Ruff、180 项测试、wheel 安装后 9/9 录制评测通过 |
+| `ai check` / `ai brief` / `ai eval --live` 在线结果 | **未发布：本次审计环境没有 API Key** |
 | RAG、MCP、Streaming | 未实现 |
 | 生产部署、真实用户结果 | 未实现 / 无数据 |
 | 真实线上延迟、tokens、成本 | 无已发布数据；代码只在真实调用后记录 |
@@ -205,6 +208,9 @@ experienceos ai brief --resume wf_...
 因此，这个仓库可以证明 Agent 工程闭环和可复现性，但不声称已完成生产部署、
 线上模型准确率或用户效果。RAG 是下一项候选能力；MCP 和 Streaming 不为堆关键词
 而提前加入。
+
+完整审计范围、数据来源和合并决定见
+[`docs/AI_AGENT_AUDIT.md`](docs/AI_AGENT_AUDIT.md)。
 
 实现取舍参考 OpenAI 官方文档：
 [model guidance](https://developers.openai.com/api/docs/guides/latest-model)、
@@ -232,7 +238,7 @@ src/experienceos/
   core/        # 领域模型：Experience / Evidence / Source + ULID + 错误体系
   storage/     # 文件存储层（原子写、损坏容忍）+ 内存查询引擎
   connectors/  # GitHub / 本地 Git / 简历等导入器
-  ai/          # LLM Provider 协议 + 版本化 Prompt 模板（M2 完善）
+  ai/          # Provider Adapters / Tools / Workflow / Evals / 报告
   cli/         # typer 命令行界面
   config.py    # home 目录与 config.toml
 ```

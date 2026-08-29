@@ -3,7 +3,7 @@
 > 用户故事总纲：作为用户，我希望 AI 像一位严谨的采访者和整理员——帮我
 > 把记忆里的经历问出来、把草稿提炼成结构化资产，但**永远不替我编造事实**。
 
-## #010 LLM Provider 接线
+## #010 LLM Provider 接线 🚧 部分完成
 
 **Labels**: `area/ai` · P0 · intermediate
 
@@ -14,15 +14,18 @@
 
 ### 验收标准
 
-- [ ] `OpenAICompatibleProvider` 完整实现（M0 骨架之上）：超时、一次
+- [x] `OpenAICompatibleProvider` 完整实现（M0 骨架之上）：超时、一次
       重试（仅网络类错误）、429/5xx 转为 `AIProviderError` 并保留响应摘要
 - [ ] `experienceos config set ai.model glm-4.7` 等 `config set/get/list`
       子命令（写入 config.toml）
-- [ ] `experienceos ai check`：端到端连通性自检（发一条最小请求，报告
+- [x] `experienceos ai check`：端到端连通性自检（发一条最小请求，报告
       模型名与耗时；无 key 时给出精确的环境变量提示）
-- [ ] `MockProvider`（录制/回放固定回复）进入核心代码，供测试与
+- [x] `MockProvider`（录制/回放固定回复）进入核心代码，供测试与
       `--dry-run` 使用
-- [ ] API key 只从环境变量读取的行为有测试锁定
+- [x] API key 只从环境变量读取的行为有测试锁定
+
+此外，当前源码已增加 Responses API Adapter 和独立 Evidence Brief Workflow；
+它们不等同于下方尚未实现的 `interview` / `enrich`。
 
 ## #011 `interview` 命令（AI 采访录入）
 

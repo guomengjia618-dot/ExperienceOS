@@ -1,9 +1,4 @@
-"""ExperienceOS command line interface.
-
-Twelve commands covering the M0 loop: initialize a home, record
-experiences, browse/search them, refine fields, and keep the local
-knowledge base healthy.
-"""
+"""ExperienceOS command line interface for records, imports, and AI workflows."""
 
 from __future__ import annotations
 

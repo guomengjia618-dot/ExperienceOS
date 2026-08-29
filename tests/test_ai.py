@@ -300,6 +300,11 @@ class TestProviderProtocol:
             {
                 "output": [
                     {
+                        "type": "reasoning",
+                        "id": "rs_1",
+                        "encrypted_content": "encrypted-state",
+                    },
+                    {
                         "type": "function_call",
                         "call_id": "call_1",
                         "name": "lookup",
@@ -350,8 +355,15 @@ class TestProviderProtocol:
         )
 
         assert first.tool_calls[0].name == "lookup"
+        assert payloads[0]["store"] is False
+        assert payloads[0]["include"] == ["reasoning.encrypted_content"]
         assert payloads[0]["tools"][0]["name"] == "lookup"
         assert payloads[0]["text"]["format"]["strict"] is True
+        assert payloads[1]["input"][-3] == {
+            "type": "reasoning",
+            "id": "rs_1",
+            "encrypted_content": "encrypted-state",
+        }
         assert payloads[1]["input"][-2]["type"] == "function_call"
         assert payloads[1]["input"][-1] == {
             "type": "function_call_output",

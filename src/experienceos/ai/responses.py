@@ -46,6 +46,7 @@ class OpenAIResponsesProvider:
             "model": self._config.model,
             "input": input_items,
             "store": False,
+            "include": ["reasoning.encrypted_content"],
         }
         if instructions:
             payload["instructions"] = instructions

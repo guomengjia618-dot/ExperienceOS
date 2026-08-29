@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Evidence Brief Agent: OpenAI-compatible Chat Completions and stateless
+  Responses API Adapters, strict structured output, three read-only local
+  Tools, grounded citations, atomic checkpoints/resume, sanitized metrics,
+  bounded retry handling, an offline Demo, and a nine-case AI-assisted
+  synthetic regression set with a provenance manifest.
 - Local git repository analyzer (#008): read-only `git log` analysis of a
   local checkout — activity window, author-attributed commit count and
   median change size, extension-based language composition (built-in map,
