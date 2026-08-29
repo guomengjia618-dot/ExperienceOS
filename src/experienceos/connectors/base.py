@@ -95,14 +95,21 @@ class ExperienceDraft:
         *,
         origin: SourceOrigin | str,
         ref: str | None = None,
+        created_by: str | None = None,
         **fields: Any,
     ) -> ExperienceDraft:
         """Build a draft. ``fields`` are ``Experience.new`` kwargs
-        (title, type, period, technology, evidence, ...)."""
+        (title, type, period, technology, evidence, ...).
+
+        ``created_by`` overrides the provenance author ("user" by
+        default; AI pipelines pass ``"ai:<model>"``)."""
+        source: dict[str, Any] = {"origin": origin, "ref": ref}
+        if created_by is not None:
+            source["created_by"] = created_by
         try:
             experience = Experience.new(
                 status=Status.draft,
-                source={"origin": origin, "ref": ref},
+                source=source,
                 **fields,
             )
         except PydanticValidationError as exc:

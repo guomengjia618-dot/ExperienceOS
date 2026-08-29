@@ -23,11 +23,23 @@ from pydantic import ValidationError as PydanticValidationError
 from rich.console import Console
 
 from experienceos import __version__
+from experienceos.ai.interview import (
+    build_extraction_messages,
+    collect_evidence_candidates,
+    draft_from_extraction,
+    interview_system_prompt,
+    parse_extraction_json,
+    save_transcript,
+)
 from experienceos.ai.mock import MockProvider
 from experienceos.ai.provider import Message, build_provider
 from experienceos.cli import render
 from experienceos.config import load_config, resolve_home, save_config
-from experienceos.connectors import AuthoredExtractor, default_registry
+from experienceos.connectors import (
+    AuthoredExtractor,
+    ExperienceDraft,
+    default_registry,
+)
 from experienceos.core.errors import (
     ExperienceOSError,
     NotFoundError,
@@ -39,6 +51,7 @@ from experienceos.core.guardrails import find_unsupported_claims, lint_experienc
 from experienceos.core.models import (
     Experience,
     ExperienceType,
+    Period,
     Status,
     is_valid_year_month,
 )
@@ -169,6 +182,27 @@ def _prompt_type() -> ExperienceType:
             typer.echo("Unknown type, choose one of the listed values.")
 
 
+def _prompt_experience_basics() -> dict[str, Any]:
+    """Shared prompts for `add` and `interview --no-ai`."""
+    title = typer.prompt("Title")
+    type_value = _prompt_type()
+    start = _prompt_month("Start (YYYY-MM)")
+    end = _prompt_month("End (YYYY-MM, leave empty if ongoing)", allow_empty=True)
+    role = typer.prompt("Your role", default="")
+    description = typer.prompt("Short description", default="")
+    technology = typer.prompt("Technologies (comma separated)", default="")
+    tags = typer.prompt("Tags (comma separated)", default="")
+    return {
+        "title": title,
+        "type": type_value,
+        "period": {"start": start, "end": end},
+        "role": role,
+        "description": description,
+        "technology": [t.strip() for t in technology.split(",") if t.strip()],
+        "tags": [t.strip() for t in tags.split(",") if t.strip()],
+    }
+
+
 @app.command()
 @_friendly_errors
 def add(ctx: typer.Context) -> None:
@@ -178,24 +212,8 @@ def add(ctx: typer.Context) -> None:
     `set`, `add-item` or `edit`.
     """
     store = _get_store(ctx)
-    title = typer.prompt("Title")
-    type_value = _prompt_type()
-    start = _prompt_month("Start (YYYY-MM)")
-    end = _prompt_month("End (YYYY-MM, leave empty if ongoing)", allow_empty=True)
-    role = typer.prompt("Your role", default="")
-    description = typer.prompt("Short description", default="")
-    technology = typer.prompt("Technologies (comma separated)", default="")
-    tags = typer.prompt("Tags (comma separated)", default="")
-
-    experience = Experience.new(
-        title=title,
-        type=type_value,
-        period={"start": start, "end": end},
-        role=role,
-        description=description,
-        technology=[t.strip() for t in technology.split(",") if t.strip()],
-        tags=[t.strip() for t in tags.split(",") if t.strip()],
-    )
+    basics = _prompt_experience_basics()
+    experience = Experience.new(**basics)
     render.render_experience(console, experience)
     if not typer.confirm("Save this experience?", default=True):
         console.print("Discarded.")
@@ -263,6 +281,204 @@ def import_cmd(
     console.print(f"[green]Saved[/green] {len(saved_ids)} draft(s) via '{extractor.name}':")
     for exp_id in saved_ids:
         console.print(f"  experienceos show {render.short_id(exp_id)}   # {exp_id}")
+
+
+# -- interview (#011) ---------------------------------------------------------
+
+_CONFIRM_SCALARS = (
+    "title", "type", "period", "context", "role", "description", "reflection",
+)
+_CONFIRM_LISTS = ("technology", "contribution", "challenge", "solution", "result")
+
+
+@app.command()
+@_friendly_errors
+def interview(
+    ctx: typer.Context,
+    language: str = typer.Option(
+        "Chinese", "--language", help="Language the AI asks questions in."
+    ),
+    no_ai: bool = typer.Option(
+        False, "--no-ai", help="Plain wizard, no AI involved (always available)."
+    ),
+) -> None:
+    """Record an experience through a guided conversation (#011).
+
+    The AI asks one question at a time (STAR), proposes a draft at the
+    end, and you confirm every field before anything is saved. The
+    transcript is only sent to your configured provider and is never
+    stored unless extraction fails twice (then it lands in
+    <home>/drafts/ for retry).
+    """
+    store = _get_store(ctx)
+    home = resolve_home(ctx.obj)
+    if no_ai:
+        draft = _interview_wizard_draft()
+    else:
+        draft = _interview_ai_draft(home, language)
+        render.render_experience(console, draft.experience)
+        confirmed = _confirm_fields(draft.experience)
+        if confirmed is None:
+            console.print("Discarded.")
+            raise typer.Exit()
+        draft = ExperienceDraft(confirmed)
+    saved = store.save(draft.experience)
+    console.print(
+        f"[green]Saved draft[/green] {draft.experience.id} -> {saved}\n"
+        f"Refine it, then promote it: `experienceos set "
+        f"{render.short_id(draft.experience.id)} status active`"
+    )
+
+
+def _interview_wizard_draft() -> ExperienceDraft:
+    """`--no-ai` fallback: the pre-#006 plain wizard, kept forever."""
+    basics = _prompt_experience_basics()
+    return ExperienceDraft.create(
+        origin="interview", created_by="user", **basics
+    )
+
+
+def _interview_ai_draft(home: Path, language: str) -> ExperienceDraft:
+    """Conversation loop + extraction, with one JSON retry."""
+    config = load_config(home)
+    provider = build_provider(config.ai)
+    model = config.ai.model
+    console.print(
+        "[dim]Conversation starts. Answer in your own words; type /done "
+        "when the story feels complete.[/dim]"
+    )
+    messages = [
+        Message(role="system", content=interview_system_prompt(language)),
+        Message(
+            role="user",
+            content="I want to record an experience. Ask me your first question.",
+        ),
+    ]
+    transcript: list[tuple[str, str]] = []
+    candidates: list[dict[str, str]] = []
+    question = provider.complete(messages)
+    messages.append(Message(role="assistant", content=question))
+    transcript.append(("assistant", question))
+    console.print(f"[bold]AI:[/bold] {question}")
+    while True:
+        answer = typer.prompt("You", default="", show_default=False)
+        if not answer.strip() or answer.strip() == "/done":
+            break
+        transcript.append(("user", answer))
+        candidates.extend(collect_evidence_candidates(answer))
+        messages.append(Message(role="user", content=answer))
+        reply = provider.complete(messages)
+        messages.append(Message(role="assistant", content=reply))
+        transcript.append(("assistant", reply))
+        console.print(f"[bold]AI:[/bold] {reply}")
+
+    messages = build_extraction_messages(transcript, model)
+    for attempt in (1, 2):
+        raw = provider.complete(messages)
+        try:
+            data = parse_extraction_json(raw)
+            break
+        except ValueError as exc:
+            if attempt == 2:
+                path = save_transcript(home, transcript, model)
+                err_console.print(
+                    f"[red]error:[/red] {exc}; extraction failed twice, the "
+                    f"transcript is kept at {path} — rerun `interview` later."
+                )
+                raise typer.Exit(code=1) from exc
+            messages.append(Message(role="assistant", content=raw))
+            messages.append(
+                Message(
+                    role="user",
+                    content="That was not valid JSON. Output ONLY the JSON object.",
+                )
+            )
+    return draft_from_extraction(data, model, candidates)
+
+
+def _confirm_fields(experience: Experience) -> Experience | None:
+    """Field-by-field accept/edit/drop; every field must be settled."""
+    for field_name in (*_CONFIRM_SCALARS, *_CONFIRM_LISTS):
+        current = getattr(experience, field_name)
+        if not _field_has_value(current):
+            continue
+        _echo_field(field_name, current)
+        answer = typer.prompt(
+            f"{field_name} [Enter=keep / e=edit / d=drop]",
+            default="",
+            show_default=False,
+        ).strip().lower()
+        if answer == "d":
+            _drop_field(experience, field_name)
+        elif answer == "e":
+            _edit_field(experience, field_name)
+    if not typer.confirm("Save this experience?", default=True):
+        return None
+    return experience
+
+
+def _field_has_value(value: Any) -> bool:
+    if isinstance(value, list):
+        return bool(value)
+    if isinstance(value, Period):
+        return True
+    return bool(value)
+
+
+def _echo_field(field_name: str, value: Any) -> None:
+    if isinstance(value, Period):
+        shown = value.display()
+    elif isinstance(value, list):
+        shown = " | ".join(
+            item.location if hasattr(item, "location") else str(item)
+            for item in value
+        )
+    else:
+        shown = str(value)
+    console.print(f"[bold]{field_name}:[/bold] {shown or '(empty)'}")
+
+
+def _drop_field(experience: Experience, field_name: str) -> None:
+    try:
+        if field_name == "type":
+            experience.type = ExperienceType.other
+        elif isinstance(getattr(experience, field_name), list):
+            setattr(experience, field_name, [])
+        elif field_name == "period":
+            experience.period.end = None
+        else:
+            setattr(experience, field_name, "")
+    except PydanticValidationError as exc:  # pragma: no cover - defensive
+        err_console.print(f"[red]cannot drop {field_name}:[/red] {exc}")
+
+
+def _edit_field(experience: Experience, field_name: str) -> None:
+    try:
+        if field_name == "type":
+            experience.type = _prompt_type()
+        elif field_name == "period":
+            start = _prompt_month("Start (YYYY-MM)")
+            end = _prompt_month(
+                "End (YYYY-MM, leave empty if ongoing)", allow_empty=True
+            )
+            experience.period = Period(start=start, end=end)
+        elif field_name in _CONFIRM_LISTS:
+            raw = typer.prompt(
+                f"New {field_name} (comma separated replaces the list)", default=""
+            )
+            setattr(
+                experience,
+                field_name,
+                [item.strip() for item in raw.split(",") if item.strip()],
+            )
+        else:
+            setattr(
+                experience,
+                field_name,
+                typer.prompt(f"New {field_name}", default=str(getattr(experience, field_name))),
+            )
+    except (PydanticValidationError, ValueError) as exc:
+        err_console.print(f"[red]invalid value, keeping the old one:[/red] {exc}")
 
 
 @app.command("list")
