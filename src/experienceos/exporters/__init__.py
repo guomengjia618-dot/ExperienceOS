@@ -6,6 +6,7 @@ Resume).
 """
 
 from experienceos.exporters.base import Exporter, ExportOptions
+from experienceos.exporters.json_resume import JsonResumeExporter
 from experienceos.exporters.markdown import MarkdownExporter
 from experienceos.exporters.registry import (
     ExporterRegistry,
@@ -13,11 +14,13 @@ from experienceos.exporters.registry import (
 )
 
 default_exporter_registry.register(MarkdownExporter())
+default_exporter_registry.register(JsonResumeExporter())
 
 __all__ = [
     "ExportOptions",
     "Exporter",
     "ExporterRegistry",
+    "JsonResumeExporter",
     "MarkdownExporter",
     "default_exporter_registry",
 ]

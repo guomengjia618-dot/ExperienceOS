@@ -621,6 +621,13 @@ def export_cmd(
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         target = Path.cwd() / f"experienceos-export-{name}-{stamp}{exporter.suffix}"
     path = exporter.export(experiences, target, ExportOptions(timeline=timeline))
+    dropped = getattr(exporter, "last_dropped", None)
+    if dropped:
+        detail = ", ".join(f"{field} x{n}" for field, n in sorted(dropped.items()))
+        err_console.print(
+            f"[dim]dropped unexportable fields: {escape(detail)}[/dim]",
+            soft_wrap=True,
+        )
     console.print(
         f"[green]Exported[/green] {len(experiences)} record(s) -> {path}",
         soft_wrap=True,
