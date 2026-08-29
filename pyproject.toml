@@ -46,6 +46,17 @@ Documentation = "https://github.com/experienceos/experienceos/tree/main/docs"
 experienceos = "experienceos.cli.app:main"
 experienceos-serve = "experienceos.api.app:main"
 
+# built-ins go through the same entry-point mechanism as third-party
+# plugins (#019); source checkouts additionally register them at import
+[project.entry-points."experienceos.connectors"]
+github = "experienceos.connectors.github:GitHubExtractor"
+git-repo = "experienceos.connectors.gitrepo:GitRepoExtractor"
+resume = "experienceos.connectors.resume:ResumeExtractor"
+
+[project.entry-points."experienceos.exporters"]
+markdown = "experienceos.exporters.markdown:MarkdownExporter"
+json-resume = "experienceos.exporters.json_resume:JsonResumeExporter"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/experienceos"]
 

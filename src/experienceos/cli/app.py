@@ -64,6 +64,7 @@ from experienceos.core.models import (
     is_valid_year_month,
 )
 from experienceos.exporters import ExportOptions, default_exporter_registry
+from experienceos.plugins import load_plugins, plugin_summary
 from experienceos.services import experiences as services
 from experienceos.stats import (
     evidence_coverage_by_year,
@@ -153,6 +154,7 @@ def root(
 ) -> None:
     """ExperienceOS - your personal experience operating system."""
     ctx.obj = home
+    load_plugins()  # entry-point connectors/exporters; failures contained
 
 
 @app.command()
@@ -952,6 +954,37 @@ def lint(
         f"{len({issue.experience_id for issue in issues})} record(s)."
     )
     raise typer.Exit(code=1)
+
+
+# -- plugins (#019) -----------------------------------------------------------
+
+plugins_app = typer.Typer(help="Inspect installed connectors and exporters.")
+app.add_typer(plugins_app, name="plugins")
+
+
+@plugins_app.command("list")
+@_friendly_errors
+def plugins_list(ctx: typer.Context) -> None:
+    """Show every entry-point plugin and its load state (#019)."""
+    rows = plugin_summary(load_plugins())
+    if not rows:
+        console.print(
+            "No entry-point plugins found. Built-ins: "
+            + ", ".join(default_registry.names())
+            + " (connectors), "
+            + ", ".join(default_exporter_registry.names())
+            + " (exporters)."
+        )
+        return
+    for row in rows:
+        marker = "[green]ok[/green]" if row["state"] != "failed" else "[red]failed[/red]"
+        console.print(
+            f"{marker} {row['name'].ljust(14)} {row['group'].ljust(10)} "
+            f"v{row['version'].ljust(8)} from {row['source'].ljust(14)} "
+            f"({row['state']}) {row['target']}"
+        )
+        if row["error"]:
+            err_console.print(f"    [red]{escape(row['error'])}[/red]")
 
 
 # -- config & AI diagnostics (#010) ------------------------------------------
