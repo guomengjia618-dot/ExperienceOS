@@ -63,6 +63,8 @@ DONE_NOTES = {
     "007": "Implemented in commit a49eca0 (GitHub importer); docs in 21ef342.",
     "008": "Implemented in commit fb5ff5f (local git repository analyzer).",
     "009": "Implemented in commit c97bcda (resume importer, rule-based).",
+    "010": "Implemented in commit 226037a (provider wiring, config + ai check, MockProvider).",
+    "013": "Implemented in commit 7196195 (core guardrails + lint command).",
 }
 
 DIFFICULTY_LABELS = {"good first issue", "intermediate", "advanced"}

@@ -34,7 +34,7 @@ Issue 明细见 [issues/](issues/)，标签体系：`area/core` `area/cli`
 - #011 `interview` 命令（STAR 引导对话 → 草稿，全程引用证据）
 - #012 `enrich` 命令（对已有记录提出 contribution/result/reflection
   改进提案，逐项 diff 确认）
-- #013 证据护栏（`lint`：无证据的量化断言被标记而非静默接受）
+- ✅ #013 证据护栏（`lint`：无证据的量化断言被标记而非静默接受）
 
 ## M3 — 输出（v0.4.0）
 

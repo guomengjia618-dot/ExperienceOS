@@ -72,7 +72,7 @@
 - [ ] 附带：简历 PDF 提取（#009 的延伸）——pypdf 抽文本后走同一提取管线
 - [ ] MockProvider 测试：含越界提案的响应被正确拒绝
 
-## #013 证据护栏（`lint`）
+## #013 证据护栏（`lint`）✅ 2026-08-29
 
 **Labels**: `area/ai` `area/core` · P1 · intermediate
 
@@ -83,11 +83,11 @@
 
 ### 验收标准
 
-- [ ] `experienceos lint [--all]`：扫描 contribution/result 中的量化
+- [x] `experienceos lint [--all]`：扫描 contribution/result 中的量化
       模式（数字、倍数、百分比、排名），报告无 evidence 挂载的断言
-- [ ] 每条报告：记录 id、命中句子、建议动作（补 evidence / 改写 / 标记
+- [x] 每条报告：记录 id、命中句子、建议动作（补 evidence / 改写 / 标记
       source=interview 记忆来源）
-- [ ] 规则实现为纯函数 `experienceos/core/guardrails.py`，独立可测；
+- [x] 规则实现为纯函数 `experienceos/core/guardrails.py`，独立可测；
       不依赖 LLM
-- [ ] `lint` 结果退出码：有问题 1，无问题 0（可接入 CI 或 pre-commit）
-- [ ] stats 输出增加 lint 汇总（无证据断言数）
+- [x] `lint` 结果退出码：有问题 1，无问题 0（可接入 CI 或 pre-commit）
+- [x] stats 输出增加 lint 汇总（无证据断言数）
