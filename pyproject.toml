@@ -35,7 +35,8 @@ dependencies = [
 ai = ["httpx>=0.27"]
 github = ["httpx>=0.27"]
 pdf = ["pypdf>=4.0"]
-dev = ["pytest>=8.0", "ruff>=0.4", "httpx>=0.27"]
+api = ["fastapi>=0.100", "uvicorn>=0.30"]
+dev = ["pytest>=8.0", "ruff>=0.4", "httpx>=0.27", "fastapi>=0.100"]
 
 [project.urls]
 Homepage = "https://github.com/experienceos/experienceos"
@@ -43,6 +44,7 @@ Documentation = "https://github.com/experienceos/experienceos/tree/main/docs"
 
 [project.scripts]
 experienceos = "experienceos.cli.app:main"
+experienceos-serve = "experienceos.api.app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/experienceos"]
@@ -80,5 +82,6 @@ select = [
 "tests/test_resume_connector.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.flake8-bugbear]
-# typer's DSL requires calling Option/Argument in parameter defaults
-extend-immutable-calls = ["typer.Option", "typer.Argument", "typer.prompt"]
+# typer's DSL requires calling Option/Argument in parameter defaults;
+# fastapi.Query is the same pattern in the API layer
+extend-immutable-calls = ["typer.Option", "typer.Argument", "typer.prompt", "fastapi.Query"]

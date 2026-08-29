@@ -56,7 +56,6 @@ from experienceos.core.errors import (
     StorageError,
     ValidationError,
 )
-from experienceos.core.guardrails import lint_experiences
 from experienceos.core.models import (
     Experience,
     ExperienceType,
@@ -65,8 +64,8 @@ from experienceos.core.models import (
     is_valid_year_month,
 )
 from experienceos.exporters import ExportOptions, default_exporter_registry
+from experienceos.services import experiences as services
 from experienceos.stats import (
-    aggregate_stats,
     evidence_coverage_by_year,
     technology_cooccurrence,
     technology_timeline,
@@ -132,7 +131,8 @@ def _get_store(ctx: typer.Context) -> ExperienceStore:
 
 
 def _load_by_prefix(store: ExperienceStore, prefix: str) -> Experience:
-    return store.load(store.resolve(prefix))
+    # thin shell over the service layer since #018
+    return services.get_experience(store, prefix)
 
 
 # -- commands ----------------------------------------------------------------
@@ -617,7 +617,7 @@ def export_cmd(
         )
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
-    experiences = [r.experience for r in search(store.list_all(), query)]
+    experiences = services.list_experiences(store, query)
     if not experiences:
         console.print("No experiences match the given filters.")
         raise typer.Exit()
@@ -847,11 +847,10 @@ def stats(
 ) -> None:
     """Summarize the knowledge base: coverage, types and top technologies."""
     store = _get_store(ctx)
-    experiences = store.list_all()
-    if not experiences:
+    summary = services.summarize(store)
+    if summary["total"] == 0:
         console.print("Nothing recorded yet. Run `experienceos add` to start.")
         return
-    summary = aggregate_stats(experiences)
     if json_output:
         console.print_json(json.dumps(summary, ensure_ascii=False))
         return
@@ -915,7 +914,7 @@ def profile(ctx: typer.Context) -> None:
 def validate(ctx: typer.Context) -> None:
     """Check every stored record for schema problems."""
     store = _get_store(ctx)
-    issues = store.validate()
+    issues = services.validate_home(store)
     total = len(store.all_ids())
     if not issues:
         console.print(f"[green]All {total} record(s) valid.[/green]")
@@ -938,14 +937,9 @@ def lint(
     Exit code 1 when issues are found, so this can gate CI or pre-commit.
     """
     store = _get_store(ctx)
-    experiences = store.list_all()
-    if not all:
-        experiences = [e for e in experiences if e.status is not Status.archived]
-    issues = lint_experiences(experiences)
+    issues = services.lint_home(store, include_archived=all)
     if not issues:
-        console.print(
-            f"[green]No unsupported claims in {len(experiences)} record(s).[/green]"
-        )
+        console.print("[green]No unsupported claims.[/green]")
         return
     for issue in issues:
         console.print(
