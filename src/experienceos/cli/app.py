@@ -15,6 +15,7 @@ import subprocess
 import time
 from collections import Counter
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,7 @@ from experienceos.core.models import (
     Status,
     is_valid_year_month,
 )
+from experienceos.exporters import ExportOptions, default_exporter_registry
 from experienceos.storage import ExperienceStore, SearchQuery, search
 
 app = typer.Typer(
@@ -548,6 +550,81 @@ def enrich(
         )
     else:
         console.print("No proposals applied.")
+
+
+# -- export (#014) ------------------------------------------------------------
+
+
+@app.command("export")
+@_friendly_errors
+def export_cmd(
+    ctx: typer.Context,
+    name: str = typer.Argument(None, help="Exporter name (see --list)."),
+    out: Path | None = typer.Option(
+        None,
+        "--out",
+        "-o",
+        help="Output file path (default: ./experienceos-export-<name>-<stamp><ext>).",
+    ),
+    status: Status | None = typer.Option(
+        Status.active,
+        "--status",
+        "-s",
+        help="Only export records with this status. Defaults to active: "
+        "drafts never leak into an artifact.",
+    ),
+    list_names: bool = typer.Option(False, "--list", help="List available exporters."),
+    type: ExperienceType | None = typer.Option(None, "--type", "-t"),
+    tag: list[str] = typer.Option([], "--tag"),
+    tech: list[str] = typer.Option([], "--tech"),
+    since: str | None = typer.Option(None, "--since", help="YYYY-MM"),
+    until: str | None = typer.Option(None, "--until", help="YYYY-MM"),
+    timeline: bool = typer.Option(
+        False,
+        "--timeline",
+        help="Markdown only: compact by-year table instead of the full profile.",
+    ),
+) -> None:
+    """Export a filtered subset of records into a shareable artifact (#014).
+
+    Filters reuse the search machinery (--type/--tag/--tech/--since/
+    --until); the default selection is active records only, so drafts
+    and archived records stay private unless you ask for them.
+    """
+    if list_names:
+        console.print("Available exporters: " + ", ".join(default_exporter_registry.names()))
+        return
+    if not name:
+        raise ValidationError(
+            "export needs a format name; run `experienceos export --list`"
+        )
+    exporter = default_exporter_registry.get(name)  # fail before touching data
+    store = _get_store(ctx)
+    try:
+        query = SearchQuery(
+            types=(type,) if type else (),
+            status=status,
+            tags=tuple(tag),
+            technology=tuple(tech),
+            since=since,
+            until=until,
+        )
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    experiences = [r.experience for r in search(store.list_all(), query)]
+    if not experiences:
+        console.print("No experiences match the given filters.")
+        raise typer.Exit()
+    if out is not None:
+        target = out
+    else:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        target = Path.cwd() / f"experienceos-export-{name}-{stamp}{exporter.suffix}"
+    path = exporter.export(experiences, target, ExportOptions(timeline=timeline))
+    console.print(
+        f"[green]Exported[/green] {len(experiences)} record(s) -> {path}",
+        soft_wrap=True,
+    )
 
 
 @app.command("list")

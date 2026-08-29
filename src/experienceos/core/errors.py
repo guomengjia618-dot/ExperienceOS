@@ -50,3 +50,7 @@ class NotInitializedError(ExperienceOSError):
 
 class AIProviderError(ExperienceOSError):
     """An LLM provider is misconfigured or failed."""
+
+
+class ExportError(ExperienceOSError):
+    """An exporter is unknown or failed to render its target."""
