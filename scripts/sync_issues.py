@@ -66,7 +66,11 @@ DONE_NOTES = {
     "010": "Implemented in commit 226037a (provider wiring, config + ai check, MockProvider).",
     "013": "Implemented in commit 7196195 (core guardrails + lint command).",
     "011": "Implemented in commit 96d5a62 (interview command + ai/interview.py pipeline).",
-    "012": "Implemented in this milestone (enrich command, whitelist gate, PDF via [pdf] extra).",
+    "012": "Implemented in commit 21466d3 (enrich command, whitelist gate, PDF via [pdf] extra).",
+    "014": "Implemented in commit 3152a5b (exporter framework + export command).",
+    "015": "Implemented in commit 3152a5b (Markdown profile/timeline + golden tests).",
+    "016": "Implemented in commit 8a5b499 (JSON Resume exporter).",
+    "017": "Implemented in commit 5b128c6 (profile, stats --json, stats module).",
 }
 
 DIFFICULTY_LABELS = {"good first issue", "intermediate", "advanced"}

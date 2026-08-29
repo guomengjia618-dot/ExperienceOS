@@ -110,6 +110,18 @@ experienceos enrich <id>     # 表达改进提案，逐条 y/n（越界提案直
 experienceos lint            # 无证据的量化断言清单，可接入 CI（退出码 1）
 ```
 
+## 导出（M3）
+
+导出物永远是经历的忠实投影，默认只导出 `active` 记录（draft 不外泄）：
+
+```bash
+experienceos export markdown                    # 个人档案（STAR + evidence）
+experienceos export markdown --timeline         # 按年分组的简表
+experienceos export json-resume                 # jsonresume.org 兼容格式
+experienceos profile                            # 技能时间线 / 共现 Top-N / 覆盖趋势
+experienceos stats --json                       # 机器可读统计
+```
+
 ## Experience 数据模型
 
 每个经历是一个统一的 `Experience` 抽象——不只是代码项目，还包括毕业设计、
@@ -149,8 +161,8 @@ experienceos lint            # 无证据的量化断言清单，可接入 CI（�
 | M0 | 基础：数据模型 + 本地存储 + CLI | 0.1.0 | ✅ |
 | M1 | 导入：GitHub / 本地仓库 / 简历 Connector | 0.2.0 | ✅ |
 | M2 | 智能：AI 面试录入、enrich 提案、证据护栏 | 0.3.0 | ✅ |
-| M3 | 输出：Markdown 档案 / JSON Resume 导出 | 0.4.0 | 🚧 |
-| M4 | 平台：API 服务、插件系统、FTS 索引 | 0.5.0 | |
+| M3 | 输出：Markdown 档案 / JSON Resume 导出 | 0.4.0 | ✅ |
+| M4 | 平台：API 服务、插件系统、FTS 索引 | 0.5.0 | 🚧 |
 
 详见 `docs/ROADMAP.md` 与 `docs/issues/`（GitHub-ready 的 Issue 拆分）。
 

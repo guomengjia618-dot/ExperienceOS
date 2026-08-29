@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-08-29
+## [0.4.0] - 2026-08-29
+
+### Added
+
+- Exporter framework (#014): `Exporter` protocol, name-keyed registry and the
+  `experienceos export <name>` command with SearchQuery-backed filters;
+  defaults to active records so drafts never leak into artifacts.
+- Markdown exporter (#015): time-sorted profile with STAR structure and
+  evidence lists, plus an `--timeline` by-year view; stdlib
+  `string.Template` keeps it dependency-free; golden-file tests pin output.
+- JSON Resume exporter (#016): jsonresume.org-compatible mapping
+  (work/projects, technology -> keywords, url evidence -> url) validated by
+  strict pydantic models; unexportable fields are dropped and itemized on
+  stderr instead of being rewritten.
+- Skill profile (#017): `experienceos profile` (technology timeline,
+  co-occurrence Top-N, per-year evidence coverage) and machine-readable
+  `stats --json`, backed by a shared pure-function stats module.
+
 
 ### Added
 
@@ -66,7 +83,8 @@ First public foundation release (Milestone 0).
 - CI workflow (GitHub Actions: ruff + pytest on Python 3.10-3.13,
   Ubuntu + Windows).
 
-[Unreleased]: https://github.com/experienceos/experienceos/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/experienceos/experienceos/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/experienceos/experienceos/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/experienceos/experienceos/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/experienceos/experienceos/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/experienceos/experienceos/releases/tag/v0.1.0
