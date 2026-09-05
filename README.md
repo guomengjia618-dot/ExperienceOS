@@ -76,6 +76,19 @@ experienceos import /path/to/repo --author me@example.com
 evidence 挂仓库本地路径；若 `origin` 指向 GitHub 会自动附上仓库 URL。
 分析只用 `git log` / `git ls-files`，语言按扩展名内置映射统计。
 
+### 导入普通项目文件夹
+
+没有版本控制的目录（解压的代码包、课程作业文件夹）也能导入：
+
+```bash
+experienceos import /path/to/project-folder
+```
+
+title 取目录名，description 是 README 原文摘录，语言按扩展名统计；
+没有版本历史就没有可信的时间线，period 保留显式的 undated 占位，
+contribution 保持为空——文件清单证明不了任何人的贡献，这些留给你
+在预览确认时补全。
+
 ### 导入旧简历
 
 把 Markdown / 纯文本简历按规则解析成若干经历草稿（纯规则，不用 LLM）：
@@ -105,7 +118,7 @@ experienceos ai check        # 连通性自检，报告模型名与耗时
 三个 AI 命令都遵循「AI 只提案，人来决定」：
 
 ```bash
-experienceos interview       # STAR 采访 → 草稿，逐字段确认才落盘（--no-ai 纯向导）
+experienceos interview       # STAR 采访 → 草稿，逐字段（含 evidence）确认才落盘（--no-ai 纯向导）
 experienceos enrich <id>     # 表达改进提案，逐条 y/n（越界提案直接丢弃）
 experienceos lint            # 无证据的量化断言清单，可接入 CI（退出码 1）
 ```
@@ -173,6 +186,11 @@ experienceos stats --json                       # 机器可读统计
 | M2 | 智能：AI 面试录入、enrich 提案、证据护栏 | 0.3.0 | ✅ |
 | M3 | 输出：Markdown 档案 / JSON Resume 导出 | 0.4.0 | ✅ |
 | M4 | 平台：API 服务、插件系统、FTS 索引 | 0.5.0 | ✅ |
+| M5 | 加固：项目文件夹导入、分层守卫、查询语义统一 | 0.6.0 | ✅ |
+
+第一阶段的目标用户是开发者（应届程序员、软件工程师、AI 工程师、开源
+贡献者）；Experience 抽象刻意保持职业中立，未来可扩展到**设计师**、
+**研究人员**与**创作者**（扩展路径见 `docs/ROADMAP.md` 的「未来用户」）。
 
 详见 `docs/ROADMAP.md` 与 `docs/issues/`（GitHub-ready 的 Issue 拆分）。
 
@@ -180,10 +198,12 @@ experienceos stats --json                       # 机器可读统计
 
 ```
 src/experienceos/
-  core/        # 领域模型：Experience / Evidence / Source + ULID + 错误体系
-  storage/     # 文件存储层（原子写、损坏容忍）+ 内存查询引擎
-  connectors/  # GitHub / 本地 Git / 简历等导入器
-  ai/          # LLM Provider 协议 + 版本化 Prompt 模板（M2 完善）
+  core/        # 领域模型：Experience / ExperienceDraft / Evidence / Source + ULID + 错误体系
+  storage/     # 文件存储层（原子写、损坏容忍）+ 内存查询引擎 + FTS 索引
+  connectors/  # GitHub / 本地 Git / 项目文件夹 / 简历等导入器
+  ai/          # LLM Provider 协议 + 物料提取管线 + 版本化 Prompt 模板
+  services/    # 用例层：CLI 与 API 复用的查询 / 导入 / 统计逻辑
+  exporters/   # Markdown / JSON Resume 导出
   cli/         # typer 命令行界面
   config.py    # home 目录与 config.toml
 ```

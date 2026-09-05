@@ -13,9 +13,9 @@ It is deliberately conservative:
   spans — unknown words are never guessed as technology.
 
 Dates parse to ``YYYY-MM``. Entries without any parseable period keep
-an explicit ``1970-01`` placeholder (tagged ``undated`` by the
-extractor) because the record schema requires a start month; the user
-confirms or fixes it during the import preview.
+an explicit undated placeholder (``core.models.UNDATED_START``, tagged
+``undated`` by the extractor) because the record schema requires a
+start month; the user confirms or fixes it during the import preview.
 """
 
 from __future__ import annotations
@@ -23,8 +23,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from experienceos.core.models import UNDATED_START
+
 MAX_TECHNOLOGY = 10
-UNDATED_START = "1970-01"
 
 _MONTH_POINT = r"(\d{4})(?!\d)(?:\s*[年./\-]\s*(\d{1,2})\s*月?|\s*年)?"
 MONTH_POINT_RE = re.compile(_MONTH_POINT)

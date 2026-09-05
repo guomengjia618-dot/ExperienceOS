@@ -31,29 +31,20 @@ from experienceos.ai.enrich import (
     normalize_proposals,
     parse_proposals,
 )
+from experienceos.ai.extraction import AIExtraction, collect_evidence_candidates
 from experienceos.ai.interview import (
-    build_extraction_messages,
-    collect_evidence_candidates,
-    draft_from_extraction,
     interview_system_prompt,
-    parse_extraction_json,
     save_transcript,
 )
 from experienceos.ai.mock import MockProvider
 from experienceos.ai.provider import Message, build_provider
 from experienceos.cli import render
 from experienceos.config import load_config, resolve_home, save_config
-from experienceos.connectors import (
-    AuthoredExtractor,
-    ExperienceDraft,
-    ResumeExtractor,
-    default_registry,
-)
+from experienceos.connectors import ExperienceDraft, default_registry
 from experienceos.core.errors import (
     ExperienceOSError,
     NotFoundError,
     NotInitializedError,
-    StorageError,
     ValidationError,
 )
 from experienceos.core.models import (
@@ -67,13 +58,14 @@ from experienceos.core.models import (
 from experienceos.exporters import ExportOptions, default_exporter_registry
 from experienceos.plugins import load_plugins, plugin_summary
 from experienceos.services import experiences as services
+from experienceos.services import ingest as ingest_services
 from experienceos.services.homeops import backup_home, git_sync
 from experienceos.stats import (
     evidence_coverage_by_year,
     technology_cooccurrence,
     technology_timeline,
 )
-from experienceos.storage import ExperienceStore, SearchQuery, search
+from experienceos.storage import ExperienceStore, SearchQuery
 from experienceos.storage.fts import build_index, index_path
 
 app = typer.Typer(
@@ -251,9 +243,9 @@ def import_cmd(
     ctx: typer.Context,
     source: str = typer.Argument(
         ...,
-        help="Source to import: github:owner/repo, resume:cv.md, or a "
-        "local path. PDF resumes arrive with v0.3 AI extraction "
-        "(issue 012); use Markdown/plain text for now.",
+        help="Source to import: github:owner/repo, resume:cv.md (or .pdf "
+        "via AI extraction), project-files:/path/to/dir, a local git "
+        "repository, or any local project folder.",
     ),
     yes: bool = typer.Option(
         False, "--yes", "-y", help="Save drafts without the preview confirmation."
@@ -272,22 +264,13 @@ def import_cmd(
     `set <id> status active`.
     """
     store = _get_store(ctx)
-    extractor = default_registry.find_handler(source)
-    if isinstance(extractor, ResumeExtractor) and source.lower().rstrip(".").endswith(
-        ".pdf"
-    ):
-        config = load_config(resolve_home(ctx.obj))
-        extractor.set_ai(build_provider(config.ai), config.ai.model)
-    if author is not None:
-        if not isinstance(extractor, AuthoredExtractor):
-            raise ValidationError(
-                f"connector '{extractor.name}' does not support --author"
-            )
-        drafts = list(extractor.extract_for_author(source, author))
-    else:
-        drafts = list(extractor.extract(source))
+    config = load_config(resolve_home(ctx.obj))
+    ai = AIExtraction(build_provider(config.ai), config.ai.model)
+    extractor_name, drafts = ingest_services.resolve_drafts(
+        source, author=author, material_extractor=ai
+    )
     if not drafts:
-        console.print(f"Connector '{extractor.name}' produced no drafts for {source!r}.")
+        console.print(f"Connector '{extractor_name}' produced no drafts for {source!r}.")
         raise typer.Exit()
 
     for draft in drafts:
@@ -296,17 +279,8 @@ def import_cmd(
         console.print("Discarded.")
         raise typer.Exit()
 
-    saved_ids: list[str] = []
-    for draft in drafts:
-        if store.exists(draft.experience.id):
-            raise StorageError(
-                f"record id conflict: {draft.experience.id} already exists "
-                "(import never overwrites records)"
-            )
-        store.save(draft.experience)
-        saved_ids.append(draft.experience.id)
-
-    console.print(f"[green]Saved[/green] {len(saved_ids)} draft(s) via '{extractor.name}':")
+    saved_ids = ingest_services.save_drafts(store, drafts)
+    console.print(f"[green]Saved[/green] {len(saved_ids)} draft(s) via '{extractor_name}':")
     for exp_id in saved_ids:
         console.print(f"  experienceos show {render.short_id(exp_id)}   # {exp_id}")
 
@@ -317,6 +291,7 @@ _CONFIRM_SCALARS = (
     "title", "type", "period", "context", "role", "description", "reflection",
 )
 _CONFIRM_LISTS = ("technology", "contribution", "challenge", "solution", "result")
+_CONFIRM_EVIDENCE = "evidence"  # AI-harvested evidence passes the same gate
 
 
 @app.command()
@@ -333,10 +308,10 @@ def interview(
     """Record an experience through a guided conversation (#011).
 
     The AI asks one question at a time (STAR), proposes a draft at the
-    end, and you confirm every field before anything is saved. The
-    transcript is only sent to your configured provider and is never
-    stored unless extraction fails twice (then it lands in
-    <home>/drafts/ for retry).
+    end, and you confirm every field — evidence included — before
+    anything is saved. The transcript is only sent to your configured
+    provider and is never stored unless extraction fails twice (then it
+    lands in <home>/drafts/ for retry).
     """
     store = _get_store(ctx)
     home = resolve_home(ctx.obj)
@@ -367,7 +342,7 @@ def _interview_wizard_draft() -> ExperienceDraft:
 
 
 def _interview_ai_draft(home: Path, language: str) -> ExperienceDraft:
-    """Conversation loop + extraction, with one JSON retry."""
+    """Conversation loop + extraction; the retry lives in AIExtraction."""
     config = load_config(home)
     provider = build_provider(config.ai)
     model = config.ai.model
@@ -400,42 +375,40 @@ def _interview_ai_draft(home: Path, language: str) -> ExperienceDraft:
         transcript.append(("assistant", reply))
         console.print(f"[bold]AI:[/bold] {reply}")
 
-    messages = build_extraction_messages(transcript, model)
-    for attempt in (1, 2):
-        raw = provider.complete(messages)
-        try:
-            data = parse_extraction_json(raw)
-            break
-        except ValueError as exc:
-            if attempt == 2:
-                path = save_transcript(home, transcript, model)
-                err_console.print(
-                    f"[red]error:[/red] {exc}; extraction failed twice, the "
-                    f"transcript is kept at {path} — rerun `interview` later."
-                )
-                raise typer.Exit(code=1) from exc
-            messages.append(Message(role="assistant", content=raw))
-            messages.append(
-                Message(
-                    role="user",
-                    content="That was not valid JSON. Output ONLY the JSON object.",
-                )
-            )
-    return draft_from_extraction(data, model, candidates)
+    extraction = AIExtraction(provider, model)
+    try:
+        return extraction.extract_draft(transcript, candidates=candidates)
+    except ValueError as exc:
+        path = save_transcript(home, transcript, model)
+        err_console.print(
+            f"[red]error:[/red] {escape(str(exc))}; the transcript is kept "
+            f"at {path} — rerun `interview` later."
+        )
+        raise typer.Exit(code=1) from exc
 
 
 def _confirm_fields(experience: Experience) -> Experience | None:
-    """Field-by-field accept/edit/drop; every field must be settled."""
-    for field_name in (*_CONFIRM_SCALARS, *_CONFIRM_LISTS):
+    """Field-by-field accept/edit/drop; every field must be settled.
+
+    Evidence is in the loop too: AI-harvested evidence candidates only
+    stay when the user keeps them (they can be edited later with
+    `experienceos edit`).
+    """
+    for field_name in (*_CONFIRM_SCALARS, *_CONFIRM_LISTS, _CONFIRM_EVIDENCE):
         current = getattr(experience, field_name)
         if not _field_has_value(current):
             continue
         _echo_field(field_name, current)
-        answer = typer.prompt(
-            f"{field_name} [Enter=keep / e=edit / d=drop]",
-            default="",
-            show_default=False,
-        ).strip().lower()
+        if field_name == _CONFIRM_EVIDENCE:
+            answer = typer.prompt(
+                f"{field_name} [Enter=keep all / d=drop all]", default="", show_default=False
+            ).strip().lower()
+        else:
+            answer = typer.prompt(
+                f"{field_name} [Enter=keep / e=edit / d=drop]",
+                default="",
+                show_default=False,
+            ).strip().lower()
         if answer == "d":
             _drop_field(experience, field_name)
         elif answer == "e":
@@ -458,7 +431,10 @@ def _echo_field(field_name: str, value: Any) -> None:
         shown = value.display()
     elif isinstance(value, list):
         shown = " | ".join(
-            item.location if hasattr(item, "location") else str(item)
+            f"{item.kind.value}: {item.location}"
+            if hasattr(item, "kind") and hasattr(item, "location")
+            else item.location if hasattr(item, "location")
+            else str(item)
             for item in value
         )
     else:
@@ -490,6 +466,11 @@ def _edit_field(experience: Experience, field_name: str) -> None:
                 "End (YYYY-MM, leave empty if ongoing)", allow_empty=True
             )
             experience.period = Period(start=start, end=end)
+        elif field_name == _CONFIRM_EVIDENCE:
+            err_console.print(
+                "[dim]evidence entries are kept as proposed; edit them after "
+                "saving with `experienceos edit`.[/dim]"
+            )
         elif field_name in _CONFIRM_LISTS:
             raw = typer.prompt(
                 f"New {field_name} (comma separated replaces the list)", default=""
@@ -668,7 +649,7 @@ def list_cmd(
         until=until,
         limit=limit,
     )
-    results = search(store.list_all(), query)
+    results = services.query_results(store, query)
     if not results:
         console.print("No experiences found. Record one with `experienceos add`.")
         return
@@ -711,7 +692,7 @@ def search_cmd(
         )
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
-    results = search(store.list_all(), query)
+    results = services.query_results(store, query)
     if not results:
         console.print("No matches.")
         return

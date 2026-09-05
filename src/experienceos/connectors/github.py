@@ -13,6 +13,7 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from typing import Any
 
+from experienceos import __version__
 from experienceos.connectors.base import ExperienceDraft, parse_source
 from experienceos.core.errors import ConnectorError
 from experienceos.core.models import EvidenceKind, ExperienceType, SourceOrigin
@@ -23,6 +24,8 @@ API_VERSION = "2022-11-28"
 _REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])")
 _NEXT_LINK_RE = re.compile(r'<([^>]+)>;\s*rel="next"')
+
+_USER_AGENT = f"ExperienceOS/{__version__}"
 
 
 class GitHubAPIError(ConnectorError):
@@ -46,7 +49,7 @@ class GitHubAPI:
         self._headers = {
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": API_VERSION,
-            "User-Agent": "ExperienceOS/0.1",
+            "User-Agent": _USER_AGENT,
         }
         if token:
             self._headers["Authorization"] = f"Bearer {token}"

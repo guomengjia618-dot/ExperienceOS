@@ -203,6 +203,7 @@ class TestErrors:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import experienceos.connectors.resume.extractor as module
+        from experienceos.ai.extraction import AIExtraction
         from experienceos.ai.mock import MockProvider
 
         monkeypatch.setattr(
@@ -212,7 +213,7 @@ class TestErrors:
             '{"title": "Billing Pipeline", "type": "work", '
             '"period": {"start": "2022-01"}}'
         )
-        extractor = ResumeExtractor(provider=provider, model="test-model")
+        extractor = ResumeExtractor(AIExtraction(provider, "test-model"))
         pdf = tmp_path / "cv.pdf"
         pdf.write_bytes(b"%PDF-1.4 fake")
         drafts = list(extractor.extract(str(pdf)))
@@ -228,11 +229,12 @@ class TestErrors:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import experienceos.connectors.resume.extractor as module
+        from experienceos.ai.extraction import AIExtraction
         from experienceos.ai.mock import MockProvider
 
         monkeypatch.setattr(module, "_extract_pdf_text", lambda path: "text")
         provider = MockProvider("nope", "still nope")
-        extractor = ResumeExtractor(provider=provider, model="m")
+        extractor = ResumeExtractor(AIExtraction(provider, "m"))
         pdf = tmp_path / "cv.pdf"
         pdf.write_bytes(b"%PDF-1.4 fake")
         with pytest.raises(ResumeError, match="failed twice"):

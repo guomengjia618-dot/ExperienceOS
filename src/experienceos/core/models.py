@@ -27,6 +27,12 @@ from .ulid import new_ulid
 
 SCHEMA_VERSION = 1
 
+# Explicit placeholder for records whose period is unknown (imported
+# resumes, AI extractions of undated material): the schema requires a
+# start month, so "no date" is represented honestly instead of guessed.
+# The user confirms or fixes the value during preview/confirmation.
+UNDATED_START = "1970-01"
+
 _YEAR_MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 _EXPERIENCE_ID_RE = re.compile(r"^exp_[0-9A-HJKMNP-TV-Z]{26}$")
 
@@ -81,6 +87,7 @@ class SourceOrigin(str, enum.Enum):
     git_repo = "git_repo"
     resume = "resume"
     interview = "interview"
+    project_files = "project_files"
     import_ = "import"
 
     # allow "import" (a Python keyword) as the wire value

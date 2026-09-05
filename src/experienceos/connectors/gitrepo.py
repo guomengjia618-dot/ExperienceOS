@@ -21,6 +21,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from experienceos.connectors.base import ExperienceDraft, parse_source
+from experienceos.connectors.languages import count_languages
 from experienceos.core.errors import ConnectorError
 from experienceos.core.models import EvidenceKind, ExperienceType, SourceOrigin
 
@@ -34,64 +35,6 @@ _GITHUB_REMOTE_RE = re.compile(
     r"^(?:https?://|ssh://git@|git@)github\.com[/:]"
     r"(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+?)(?:\.git)?/?$"
 )
-
-# Built-in file-extension -> language map (keep curated, no linguist dep).
-EXTENSION_LANGUAGES: dict[str, str] = {
-    ".py": "Python",
-    ".pyw": "Python",
-    ".ipynb": "Jupyter Notebook",
-    ".js": "JavaScript",
-    ".mjs": "JavaScript",
-    ".cjs": "JavaScript",
-    ".jsx": "JavaScript",
-    ".ts": "TypeScript",
-    ".tsx": "TypeScript",
-    ".java": "Java",
-    ".kt": "Kotlin",
-    ".kts": "Kotlin",
-    ".scala": "Scala",
-    ".go": "Go",
-    ".rs": "Rust",
-    ".rb": "Ruby",
-    ".php": "PHP",
-    ".swift": "Swift",
-    ".c": "C",
-    ".h": "C",
-    ".cpp": "C++",
-    ".cc": "C++",
-    ".cxx": "C++",
-    ".hpp": "C++",
-    ".hh": "C++",
-    ".cs": "C#",
-    ".m": "Objective-C",
-    ".mm": "Objective-C",
-    ".sh": "Shell",
-    ".bash": "Shell",
-    ".zsh": "Shell",
-    ".ps1": "PowerShell",
-    ".bat": "Batch",
-    ".cmd": "Batch",
-    ".r": "R",
-    ".sql": "SQL",
-    ".pl": "Perl",
-    ".lua": "Lua",
-    ".dart": "Dart",
-    ".ex": "Elixir",
-    ".exs": "Elixir",
-    ".erl": "Erlang",
-    ".hs": "Haskell",
-    ".clj": "Clojure",
-    ".html": "HTML",
-    ".htm": "HTML",
-    ".css": "CSS",
-    ".scss": "SCSS",
-    ".less": "Less",
-    ".vue": "Vue",
-    ".svelte": "Svelte",
-    ".md": "Markdown",
-    ".rst": "reStructuredText",
-    ".tex": "TeX",
-}
 
 
 class GitRepoError(ConnectorError):
@@ -287,14 +230,7 @@ class GitRepoExtractor:
 
     def _language_counts(self, path: Path) -> Counter[str]:
         listing = self._git(path, "ls-files", "-z")
-        counts: Counter[str] = Counter()
-        for name in listing.split("\0"):
-            if not name:
-                continue
-            language = EXTENSION_LANGUAGES.get(Path(name).suffix.lower())
-            if language is not None:
-                counts[language] += 1
-        return counts
+        return count_languages([name for name in listing.split("\0") if name])
 
     def _github_remote_url(self, path: Path) -> str | None:
         result = self._run(path, "remote", "get-url", "origin")

@@ -143,7 +143,7 @@ class TestInterviewCli:
                 "I built a search engine, source at github.com/me/engine, "
                 "commit abc1234d\n"
                 "/done\n"
-                "\n\n\n"
+                "\n\n\n\n"
                 "y\n"
             ),
         )
@@ -166,6 +166,31 @@ class TestInterviewCli:
         assert "abc1234d" in locations
         # a successful run keeps no transcript on disk
         assert not (Path(cli_env) / "drafts").exists()
+
+    def test_ai_harvested_evidence_can_be_dropped(
+        self, cli_env, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Evidence passes the same human gate as every other field."""
+        fake_provider(
+            monkeypatch,
+            "What did you build?",
+            '{"title": "Dropped Evidence", "type": "personal", '
+            '"period": {"start": "2023-01"}}',
+        )
+        result = runner.invoke(
+            app,
+            ["interview"],
+            input=(
+                "built a thing, repo me/engine\n"
+                "/done\n"
+                "\n\n\n"  # keep title / type / period
+                "d\n"  # drop the harvested evidence
+                "y\n"
+            ),
+        )
+        assert result.exit_code == 0, full(result)
+        exp = ExperienceStore(cli_env).list_all()[0]
+        assert exp.evidence == []
 
     def test_invalid_json_retried_once_then_saved(
         self, cli_env, monkeypatch: pytest.MonkeyPatch

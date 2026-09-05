@@ -132,6 +132,24 @@ class TestDispatch:
         results = search(small_library.list_all(), SearchQuery(text="engine"))
         assert len(results) == 1
 
+    def test_scores_consistent_with_and_without_index(
+        self, cli_env, small_library: ExperienceStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # the index only narrows candidates; scoring always comes from the
+        # in-memory engine, so both paths return identical rankings (#029)
+        from experienceos.services.experiences import query_results
+
+        query = SearchQuery(text="engine")
+        memory = query_results(small_library, query)
+        monkeypatch.setenv("EXPERIENCEOS_FTS_THRESHOLD", "1")
+        build_index(cli_env, small_library.list_all())
+        indexed = query_results(small_library, query)
+        assert [(r.experience.id, round(r.score, 6)) for r in indexed] == [
+            (r.experience.id, round(r.score, 6)) for r in memory
+        ]
+        assert indexed[0].score > 0
+        assert indexed[0].matched_fields
+
 
 class TestCli:
     def test_index_rebuild_reports_count(self, cli_env, small_library: ExperienceStore) -> None:

@@ -6,9 +6,11 @@ The original file path is recorded in ``source.ref`` and attached as
 document it came from.
 
 PDF input (#012) cannot be parsed by regex reliably: text is recovered
-with ``pypdf`` (optional ``[pdf]`` extra) and then handed to the same
-AI extraction pipeline the interview uses — the no-fabrication rules in
-EXTRACTION_PROMPT_V1 apply, and the output is a draft either way.
+with ``pypdf`` (optional ``[pdf]`` extra) and then handed to an
+injected :class:`MaterialDraftExtractor` (the AI extraction pipeline;
+the composition root wires it in). The connector itself never imports
+the ai tier — the no-fabrication rules of the extraction prompt apply,
+and the output is a draft either way.
 """
 
 from __future__ import annotations
@@ -16,17 +18,25 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 
-from experienceos.connectors.base import ExperienceDraft, parse_source
+from experienceos.connectors.base import (
+    ExperienceDraft,
+    MaterialDraftExtractor,
+    parse_source,
+)
 from experienceos.connectors.resume.parser import ResumeEntry, parse_resume
 from experienceos.core.errors import ConnectorError
-from experienceos.core.models import EvidenceKind, ExperienceType, SourceOrigin
+from experienceos.core.models import (
+    EvidenceKind,
+    ExperienceType,
+    SourceOrigin,
+)
 
 _SCHEME = "resume"
 SUPPORTED_SUFFIXES = (".md", ".markdown", ".txt")
 PDF_SUFFIX = ".pdf"
 _INTERN_RE = re.compile(r"实习|intern", re.IGNORECASE)
+_MATERIAL_LABEL = "Material (resume text)"
 
 _TYPE_BY_CATEGORY = {
     "work": ExperienceType.work,
@@ -46,9 +56,8 @@ class ResumeExtractor:
 
     name = _SCHEME
 
-    def __init__(self, provider: Any | None = None, model: str | None = None) -> None:
-        self._provider = provider  # AI injection point for PDF extraction (#012)
-        self._model = model
+    def __init__(self, material_extractor: MaterialDraftExtractor | None = None) -> None:
+        self._materials = material_extractor  # AI injection point (#012)
 
     def can_handle(self, source: str) -> bool:
         scheme, payload = parse_source(source)
@@ -76,10 +85,9 @@ class ResumeExtractor:
         for entry in entries:
             yield self._draft_for(entry, path)
 
-    def set_ai(self, provider: Any, model: str) -> None:
-        """Attach the AI extraction pipeline (done by the CLI for PDFs)."""
-        self._provider = provider
-        self._model = model
+    def set_material_extractor(self, extractor: MaterialDraftExtractor) -> None:
+        """Wire the AI extraction pipeline (composition root's job)."""
+        self._materials = extractor
 
     def _resolve(self, source: str) -> Path:
         scheme, payload = parse_source(source)
@@ -93,15 +101,7 @@ class ResumeExtractor:
         return path
 
     def _pdf_drafts(self, path: Path) -> Iterator[ExperienceDraft]:
-        # local imports: the ai layer sits beside connectors, not below them
-        from experienceos.ai.interview import (
-            build_extraction_messages,
-            draft_from_extraction,
-            parse_extraction_json,
-        )
-        from experienceos.ai.provider import Message
-
-        if self._provider is None or not self._model:
+        if self._materials is None:
             raise ResumeError(
                 "PDF resumes need AI extraction; configure a provider first "
                 "(`experienceos config set ai.model <model>` plus its API key "
@@ -113,11 +113,6 @@ class ResumeExtractor:
                 f"no extractable text in '{path}' (scanned image PDFs need "
                 "OCR, which is not supported)"
             )
-        messages = build_extraction_messages(
-            [("resume text", text)],
-            self._model,
-            material_label="Material (resume text)",
-        )
         candidates = [
             {
                 "kind": EvidenceKind.file.value,
@@ -125,31 +120,16 @@ class ResumeExtractor:
                 "description": "Source resume document",
             }
         ]
-        data: dict[str, Any] | None = None
-        last_error: Exception | None = None
-        for attempt in (1, 2):
-            raw = self._provider.complete(messages)
-            try:
-                data = parse_extraction_json(raw)
-                break
-            except ValueError as exc:
-                last_error = exc
-                if attempt == 2:
-                    break
-                messages.append(Message(role="assistant", content=raw))
-                messages.append(
-                    Message(
-                        role="user",
-                        content="That was not valid JSON. Output ONLY the JSON object.",
-                    )
-                )
-        if data is None:
-            raise ResumeError(
-                f"AI extraction failed twice for '{path}': {last_error}"
+        try:
+            yield self._materials.extract_draft(
+                [("resume text", text)],
+                origin="resume",
+                ref=str(path),
+                candidates=candidates,
+                material_label=_MATERIAL_LABEL,
             )
-        yield draft_from_extraction(
-            data, self._model, candidates=candidates, origin="resume", ref=str(path)
-        )
+        except ValueError as exc:
+            raise ResumeError(str(exc)) from exc
 
     def _draft_for(self, entry: ResumeEntry, path: Path) -> ExperienceDraft:
         tags = ["resume"] if entry.dated else ["resume", "undated"]

@@ -26,6 +26,7 @@ except ImportError as exc:  # pragma: no cover - only hit without [api]
     ) from exc
 
 from experienceos import __version__
+from experienceos.config import resolve_home
 from experienceos.core.errors import (
     AmbiguousIdError,
     NotFoundError,
@@ -56,7 +57,7 @@ class DraftCreate(BaseModel):
 
 def create_app(home: Path | None = None) -> FastAPI:
     """Build the API bound to one ExperienceOS home directory."""
-    resolved = Path(home) if home else resolve_home_safely()
+    resolved = Path(home) if home else resolve_home()
     if not resolved.exists():
         raise NotInitializedError(
             f"{resolved} is not initialized. Run `experienceos init` first "
@@ -177,12 +178,6 @@ def create_app(home: Path | None = None) -> FastAPI:
         return svc.create_draft(store, payload.model_dump(exclude_none=True)).to_dict()
 
     return app
-
-
-def resolve_home_safely() -> Path:
-    from experienceos.config import resolve_home
-
-    return resolve_home()
 
 
 def main() -> None:  # console_script entry point: experienceos-serve

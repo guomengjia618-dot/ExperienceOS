@@ -20,18 +20,23 @@ Experience（经历资产）：统一建模工作项目、实习、开源贡献�
 ├──────────────┬─────────────────────┬───────────────────────┤
 │  connectors  │        ai           │      exporters        │
 │  github      │  LLMProvider 协议    │  markdown / json-resume│
-│  git-repo    │  OpenAI 兼容实现     │  (M3)                 │
-│  resume      │  版本化 Prompts      │                       │
+│  git-repo    │  提取管线 extraction  │                       │
+│  project-files  版本化 Prompts      │                       │
+│  resume      │                     │                       │
 ├──────────────┴─────────────────────┴───────────────────────┤
 │                      storage 存储层                         │
 │   ExperienceStore（文件 source of truth）+ 内存查询引擎      │
 ├────────────────────────────────────────────────────────────┤
 │                      core 领域层                            │
-│   Experience / Evidence / Source 模型 · ULID · 错误体系     │
+│   Experience / ExperienceDraft / Evidence / Source 模型     │
+│   ULID · 错误体系 · 证据护栏                                 │
 └────────────────────────────────────────────────────────────┘
 ```
 
-依赖方向自上而下单向依赖 `core`。`core` 不依赖任何其他层。
+依赖方向自上而下单向依赖 `core`；兄弟层之间互不依赖（connectors 与
+ai 之间需要协作时，协议定义在被依赖方、实现由服务层注入，见 D7）。
+`core` 不依赖任何其他层。以上规则由 `tests/test_layering.py` 用 AST
+静态检查强制执行，不靠自觉。
 
 ## 2. 数据流
 
@@ -122,17 +127,50 @@ OpenAI 兼容实现（覆盖 OpenAI / GLM / DeepSeek / vLLM / Ollama 等一切
 CLI 接受任意唯一前缀（`exp_01H` 或 `01H`），`ExperienceStore.resolve`
 负责展开；歧义前缀报 `AmbiguousIdError`。这是终端工具长期可用性的关键。
 
+### D7：兄弟层协作靠协议注入，不靠横向 import（M5 #028）
+
+**决策**：connectors 与 ai 是兄弟层，互不 import。需要 AI 阅读的
+connector（如 PDF 简历）通过 `connectors.base` 定义的
+`MaterialDraftExtractor` / `AcceptsMaterialExtractor` 协议接受注入；
+`ai.extraction.AIExtraction` 结构化实现该协议，由组合根
+（`services.ingest`）按能力接线——没有针对具体 connector 的特判。
+
+**理由**：M5 审查发现 ai ↔ connectors 曾存在双向横向依赖
+（ExperienceDraft 在 connectors、PDF 管线反向 import ai），任何一环
+改动都会波及兄弟层。修正后：`ExperienceDraft` 下沉 core（提案是领域
+概念）；提取管线归位 ai；依赖箭头统一指下。第三方 connector 想要 AI
+能力时实现同一协议即可，无需理解 ai 层。
+
+**代价与边界**：多一层间接（协议 + 组合根接线）。分层守卫测试
+（`tests/test_layering.py`，AST 静态检查）保证方向不被再次破坏。
+
+### D8：查询语义只有一个定义处（M5 #029）
+
+**决策**：`services.query_results` 是所有接口（CLI / API）的统一查询
+入口。FTS 索引只做**候选预过滤**——命中集合交给内存引擎做最终过滤与
+打分；得分、命中字段、排序在「有索引」与「无索引」两条路径上逐位一致
+（守卫测试断言）。
+
+**理由**：审查发现 CLI 与 API 曾走两条语义不同的路径，且 FTS 路径会
+丢弃相关性排序。查询语义必须只有一个定义处（`storage.query.search`），
+索引是加速器而不是第二种真相。
+
 ## 5. 目录结构
 
 ```
 src/experienceos/
-  core/         # 领域层：models.py / ulid.py / errors.py
-  storage/      # store.py（文件仓库）/ query.py（查询引擎）
-  connectors/   # base.py（Extractor 协议+草稿）/ registry.py（路由注册表）
-  ai/           # provider.py（协议）/ prompts.py（版本化模板）
+  core/         # 领域层：models.py / draft.py / ulid.py / errors.py / guardrails.py
+  storage/      # store.py（文件仓库）/ query.py（查询引擎）/ fts.py / migrations.py
+  connectors/   # base.py（协议+草稿+注入协议）/ languages.py / github / gitrepo
+                #   / projectfiles / resume / registry.py
+  ai/           # provider.py（协议）/ extraction.py（物料→草稿管线）
+                #   / interview.py（会话支持）/ prompts.py（版本化模板）
+  services/     # experiences.py（查询/统计用例）/ ingest.py（导入接线）/ homeops.py
+  exporters/    # base.py（协议）/ markdown / json_resume / registry.py
   cli/          # app.py（命令）/ render.py（rich 渲染）
+  api/          # app.py（FastAPI 薄壳）
   config.py     # home 解析 + config.toml 读写
-tests/          # 单元 + CLI 端到端（含离线 GitHub API fixtures）
+tests/          # 单元 + CLI 端到端（含离线 GitHub API fixtures）+ 分层守卫
 docs/           # 架构 / 路线图 / Issue 拆分
 ```
 

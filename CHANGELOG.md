@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-30
+
+Architecture-hardening release: a full-codebase review whose findings were
+fixed structurally (no special-case patches). Details in
+`docs/issues/m5-hardening.md`.
+
+### Added
+
+- Project-files connector (#027): `experienceos import /path/to/folder`
+  turns a non-git project directory into one honest draft — title from the
+  folder name, description verbatim from the README, languages from the
+  shared extension map, explicit undated period, empty contributions.
+  Walk safety: junk/build dirs pruned, directory symlinks never followed,
+  file-count cap.
+- Shared language module `connectors/languages.py` (#027): one curated
+  extension→language map now serves both git-repo and project-files.
+- Injection protocols (#028): `MaterialDraftExtractor` /
+  `AcceptsMaterialExtractor` in `connectors.base`; the AI extraction
+  pipeline (`ai.extraction.AIExtraction`) is wired by the composition
+  root, so any connector can use AI reading without importing the ai tier.
+- Layering guard tests (#028): `tests/test_layering.py` parses every
+  module's imports (AST) and fails when a tier reaches where it must not.
+- Interview confirmation now includes `evidence` (#030): AI-harvested
+  evidence candidates pass the same keep/drop gate as every other field.
+
+### Changed
+
+- **Breaking (internal API)**: `ExperienceDraft` moved to
+  `core.draft` (re-exported from `connectors.base`); the material→draft
+  pipeline moved from `ai.interview` to `ai.extraction` (names re-exported);
+  `ResumeExtractor(provider=..., model=...)` replaced by
+  `ResumeExtractor(material_extractor)` / `set_material_extractor()`.
+- Unified query path (#029): `services.query_results` is the single
+  entry point for CLI and API; the FTS index only pre-filters candidates
+  while the in-memory engine always does final filtering and scoring —
+  scores and ranking are now identical with and without an index (the
+  FTS path previously discarded both).
+- `SourceOrigin` gained `project_files`; `UNDATED_START` is defined once
+  in `core.models`; GitHub User-Agent reports the package version.
+
+### Fixed
+
+- Stale `import --help` text still claiming PDF resumes were not supported.
+
 ## [0.5.0] - 2026-08-29
 
 ### Added
@@ -101,7 +145,8 @@ First public foundation release (Milestone 0).
 - CI workflow (GitHub Actions: ruff + pytest on Python 3.10-3.13,
   Ubuntu + Windows).
 
-[Unreleased]: https://github.com/experienceos/experienceos/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/experienceos/experienceos/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/experienceos/experienceos/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/experienceos/experienceos/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/experienceos/experienceos/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/experienceos/experienceos/compare/v0.2.0...v0.3.0

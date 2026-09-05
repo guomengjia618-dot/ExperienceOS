@@ -1,33 +1,39 @@
 """Connector framework base: sources -> validated experience drafts.
 
 A connector (Extractor) turns one fragmented source of experience — a
-GitHub repo, a local git checkout, a resume file — into ``ExperienceDraft``
-records. Two invariants hold for everything a connector produces:
+GitHub repo, a local git checkout, a project folder, a resume file —
+into ``ExperienceDraft`` records. Two invariants hold for everything a
+connector produces:
 
 1. Drafts land with ``status=draft`` — importing never creates "finished"
-   records; confirming and refining is the user's job (AI proposals in M2
-   build on the same mechanism).
-2. Provenance is mandatory: ``source.origin`` / ``source.ref`` record where
-   the draft came from.
+   records; confirming and refining is the user's job (AI proposals in
+   M2 build on the same mechanism).
+2. Provenance is mandatory: ``source.origin`` / ``source.ref`` record
+   where the draft came from.
 
 Source routing uses a ``scheme:payload`` syntax (``github:owner/repo``,
 ``resume:cv.md``). Strings without a scheme are local paths. Single-letter
 schemes are Windows drive paths (``C:\\repo``), not schemes.
+
+Some inputs need AI reading (PDF resumes). Connectors never import the
+ai tier: an ``AIExtraction`` pipeline (or any third-party equivalent) is
+*injected* through the :class:`MaterialDraftExtractor` /
+:class:`AcceptsMaterialExtractor` protocols below, so the dependency
+points from the composition root into both tiers — never sideways.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
-from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from collections.abc import Iterator, Sequence
+from typing import Protocol, runtime_checkable
 
-from pydantic import ValidationError as PydanticValidationError
-
-from experienceos.core.errors import ValidationError
-from experienceos.core.models import Experience, SourceOrigin, Status
+from experienceos.core.draft import ExperienceDraft
 
 _SCHEME_RE = re.compile(r"^[a-z][a-z0-9_-]+$")
+
+Material = Sequence[tuple[str, str]]
+"""Raw material: (role, text) pairs, e.g. [("user", "..."), ("resume text", "...")]."""
 
 
 def parse_source(source: str) -> tuple[str | None, str]:
@@ -76,42 +82,43 @@ class AuthoredExtractor(Protocol):
         ...
 
 
-@dataclass(frozen=True)
-class ExperienceDraft:
-    """A validated, not-yet-confirmed experience record from a connector."""
+@runtime_checkable
+class MaterialDraftExtractor(Protocol):
+    """Turns raw material into ONE validated draft proposal.
 
-    experience: Experience
+    Implemented today by ``ai.extraction.AIExtraction``; connectors that
+    need AI reading for some inputs accept one via
+    :class:`AcceptsMaterialExtractor` and stay ai-tier-free.
+    """
 
-    def __post_init__(self) -> None:
-        if self.experience.status is not Status.draft:
-            raise ValidationError(
-                "ExperienceDraft must hold status=draft, got "
-                f"{self.experience.status.value!r}"
-            )
-
-    @classmethod
-    def create(
-        cls,
+    def extract_draft(
+        self,
+        materials: Material,
         *,
-        origin: SourceOrigin | str,
+        origin: str,
         ref: str | None = None,
-        created_by: str | None = None,
-        **fields: Any,
+        candidates: list[dict[str, str]] | None = None,
+        material_label: str = "Material (conversation transcript)",
     ) -> ExperienceDraft:
-        """Build a draft. ``fields`` are ``Experience.new`` kwargs
-        (title, type, period, technology, evidence, ...).
+        """Return one draft built only from *materials* (never guessed)."""
+        ...
 
-        ``created_by`` overrides the provenance author ("user" by
-        default; AI pipelines pass ``"ai:<model>"``)."""
-        source: dict[str, Any] = {"origin": origin, "ref": ref}
-        if created_by is not None:
-            source["created_by"] = created_by
-        try:
-            experience = Experience.new(
-                status=Status.draft,
-                source=source,
-                **fields,
-            )
-        except PydanticValidationError as exc:
-            raise ValidationError(f"connector produced an invalid draft: {exc}") from exc
-        return cls(experience)
+
+@runtime_checkable
+class AcceptsMaterialExtractor(Protocol):
+    """Optional capability: connector can be handed a material extractor."""
+
+    def set_material_extractor(self, extractor: MaterialDraftExtractor) -> None:
+        """Wire the injected extractor (composition root's job)."""
+        ...
+
+
+__all__ = [
+    "AcceptsMaterialExtractor",
+    "AuthoredExtractor",
+    "ExperienceDraft",
+    "Extractor",
+    "Material",
+    "MaterialDraftExtractor",
+    "parse_source",
+]

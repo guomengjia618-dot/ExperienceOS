@@ -9,7 +9,6 @@ prompt; they raise ``ExperienceOSError`` subclasses and return data.
 from __future__ import annotations
 
 import os
-from dataclasses import replace
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
@@ -19,7 +18,7 @@ from experienceos.core.guardrails import ClaimIssue as GuardrailIssue
 from experienceos.core.guardrails import lint_experiences
 from experienceos.core.models import Experience, Status
 from experienceos.stats import aggregate_stats
-from experienceos.storage import ExperienceStore, SearchQuery, search
+from experienceos.storage import ExperienceStore, SearchQuery, SearchResult, search
 from experienceos.storage import fts as fts_module
 from experienceos.storage.store import LoadIssue
 
@@ -41,14 +40,16 @@ def search_experiences(store: ExperienceStore, query: SearchQuery) -> list[Exper
     return run_query(store, query)
 
 
-def run_query(store: ExperienceStore, query: SearchQuery) -> list[Experience]:
-    """Dispatch a query: FTS index when it pays off, memory scan otherwise (#022).
+def query_results(store: ExperienceStore, query: SearchQuery) -> list[SearchResult]:
+    """Search with ranking metadata, shared by every interface (#022).
 
-    The index only ever accelerates the *text* part; type/status/tag and
-    period filters are re-applied in memory, and stale index entries
-    (deleted files) drop out against the store. Files stay the source of
-    truth: no index, small library, or ``EXPERIENCEOS_FTS_THRESHOLD=0``
-    all mean the pure in-memory path.
+    Query semantics live in exactly one place: the in-memory engine
+    (``storage.query.search``) always does the final filtering *and*
+    scoring, so scores and matched fields mean the same thing on every
+    path. The FTS index — when present and worth it — only narrows the
+    candidate set first; it never defines semantics and never dictates
+    order. Files stay the source of truth: no index, small library, or
+    ``EXPERIENCEOS_FTS_THRESHOLD=0`` all mean the pure in-memory path.
     """
     experiences = store.list_all()
     if query.text and _fts_worth_it(store.root, len(experiences)):
@@ -56,9 +57,13 @@ def run_query(store: ExperienceStore, query: SearchQuery) -> list[Experience]:
         if ids:
             by_id = {exp.id: exp for exp in experiences}
             candidates = [by_id[exp_id] for exp_id in ids if exp_id in by_id]
-            filtered = search(candidates, replace(query, text=""))
-            return [result.experience for result in filtered]
-    return [result.experience for result in search(experiences, query)]
+            return search(candidates, query)
+    return search(experiences, query)
+
+
+def run_query(store: ExperienceStore, query: SearchQuery) -> list[Experience]:
+    """Flattened :func:`query_results` (records only)."""
+    return [result.experience for result in query_results(store, query)]
 
 
 def _fts_worth_it(home: Any, record_count: int) -> bool:

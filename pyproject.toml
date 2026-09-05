@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "experienceos"
-version = "0.5.0"
+version = "0.6.0"
 description = "ExperienceOS - an open-source personal experience operating system. Never forget what you have built."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -52,6 +52,7 @@ experienceos-serve = "experienceos.api.app:main"
 github = "experienceos.connectors.github:GitHubExtractor"
 git-repo = "experienceos.connectors.gitrepo:GitRepoExtractor"
 resume = "experienceos.connectors.resume:ResumeExtractor"
+project-files = "experienceos.connectors.projectfiles:ProjectFilesExtractor"
 
 [project.entry-points."experienceos.exporters"]
 markdown = "experienceos.exporters.markdown:MarkdownExporter"
