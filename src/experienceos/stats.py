@@ -27,28 +27,33 @@ class TechSpan:
 
 
 def technology_timeline(experiences: list[Experience]) -> list[TechSpan]:
-    """Technologies ordered by first use, with their month span."""
-    spans: dict[str, list[str]] = {}
-    ongoing: set[str] = set()
+    """Technologies ordered by first use, with their month span.
+
+    Technologies merge case-insensitively — one row per technology, like
+    every other stats view; the first-seen spelling is displayed.
+    """
+    months_by_key: dict[str, list[str]] = {}
+    display: dict[str, str] = {}
     counts: Counter[str] = Counter()
+    ongoing: set[str] = set()
     for exp in experiences:
         months = [exp.period.start] + ([exp.period.end] if exp.period.end else [])
         for tech in exp.technology:
             key = tech.casefold()
-            spans.setdefault(tech, [])
-            spans[tech].extend(months)
-            counts[tech] += 1
+            display.setdefault(key, tech)
+            months_by_key.setdefault(key, []).extend(months)
+            counts[key] += 1
             if exp.period.end is None:
                 ongoing.add(key)
     result = [
         TechSpan(
-            name=name,
+            name=display[key],
             first=min(months),
             last=max(months),
-            records=counts[name],
-            ongoing=name.casefold() in ongoing,
+            records=counts[key],
+            ongoing=key in ongoing,
         )
-        for name, months in spans.items()
+        for key, months in months_by_key.items()
     ]
     return sorted(result, key=lambda span: (span.first, span.name.casefold()))
 

@@ -116,3 +116,9 @@ def test_matched_fields_reported(corpus) -> None:
 def test_invalid_period_filter_rejected(bad: str) -> None:
     with pytest.raises(ValueError):
         SearchQuery(since=bad)
+
+
+@pytest.mark.parametrize("bad", [-1, -50])
+def test_negative_limit_rejected(bad: int) -> None:
+    with pytest.raises(ValueError):
+        SearchQuery(limit=bad)

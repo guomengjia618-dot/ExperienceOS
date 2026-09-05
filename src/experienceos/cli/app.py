@@ -378,7 +378,10 @@ def _interview_ai_draft(home: Path, language: str) -> ExperienceDraft:
     extraction = AIExtraction(provider, model)
     try:
         return extraction.extract_draft(transcript, candidates=candidates)
-    except ValueError as exc:
+    except (ValueError, ExperienceOSError) as exc:
+        # ValueError: unusable model output; ExperienceOSError: the model
+        # answered but the draft failed domain validation (bad dates etc.)
+        # — both must rescue the transcript for a later retry
         path = save_transcript(home, transcript, model)
         err_console.print(
             f"[red]error:[/red] {escape(str(exc))}; the transcript is kept "
@@ -640,15 +643,18 @@ def list_cmd(
 ) -> None:
     """Browse experiences, newest first, with optional filters."""
     store = _get_store(ctx)
-    query = SearchQuery(
-        types=(type,) if type else (),
-        status=status,
-        tags=tuple(tag),
-        technology=tuple(tech),
-        since=since,
-        until=until,
-        limit=limit,
-    )
+    try:
+        query = SearchQuery(
+            types=(type,) if type else (),
+            status=status,
+            tags=tuple(tag),
+            technology=tuple(tech),
+            since=since,
+            until=until,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
     results = services.query_results(store, query)
     if not results:
         console.print("No experiences found. Record one with `experienceos add`.")
@@ -786,7 +792,15 @@ def edit(ctx: typer.Context, id: str = typer.Argument(...)) -> None:
     else:
         scratch.write_text(experience.model_dump_json(indent=2) + "\n", encoding="utf-8")
 
-    subprocess.run([*_editor_tokens(), str(scratch)], check=False)
+    try:
+        subprocess.run([*_editor_tokens(), str(scratch)], check=False)
+    except FileNotFoundError as exc:
+        raise ValidationError(
+            f"editor '{_editor_tokens()[0]}' not found; set EXPERIENCEOS_EDITOR "
+            "or EDITOR to a program in your PATH"
+        ) from exc
+    except OSError as exc:
+        raise ValidationError(f"could not launch the editor: {exc}") from exc
     try:
         updated = Experience.from_dict(json.loads(scratch.read_text(encoding="utf-8")))
     except (PydanticValidationError, ValueError) as exc:

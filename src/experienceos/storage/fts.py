@@ -17,6 +17,7 @@ scale.
 
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 from collections.abc import Iterable
@@ -29,6 +30,8 @@ DEFAULT_THRESHOLD = 1000
 FETCH_LIMIT = 500  # FTS hits fetched before in-memory filters narrow them
 
 _CJK_RE = re.compile(r"([\u4e00-\u9fff])")
+
+logger = logging.getLogger("experienceos.storage")
 
 
 def index_path(home: Path) -> Path:
@@ -69,6 +72,54 @@ def build_index(home: Path, experiences: Iterable[Experience]) -> int:
     finally:
         connection.close()
     return count
+
+
+def upsert_experience(home: Path, experience: Experience) -> bool:
+    """Refresh one record's row in an existing index; best-effort.
+
+    Keeps the index in step with ``store.save`` so records created or
+    edited after a rebuild stay searchable. Never raises: the index is a
+    cache, and a failed update only means it is stale until the next
+    rebuild (callers fall back to the in-memory scan when needed).
+    """
+    if not index_exists(home):
+        return False
+    try:
+        connection = sqlite3.connect(index_path(home))
+        try:
+            # FTS5 tables have no UNIQUE constraint on `id`, so an upsert
+            # is delete-then-insert inside one transaction.
+            connection.execute(
+                "DELETE FROM experiences WHERE id = ?", (experience.id,)
+            )
+            connection.execute(
+                "INSERT INTO experiences (id, title, body) VALUES (?, ?, ?)",
+                (experience.id, _tokenize(experience.title), _tokenize(_flatten(experience))),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+    except sqlite3.Error as exc:
+        logger.warning("could not update search index for %s: %s", experience.id, exc)
+        return False
+    return True
+
+
+def remove_experience(home: Path, experience_id: str) -> bool:
+    """Drop one record's row from an existing index; best-effort."""
+    if not index_exists(home):
+        return False
+    try:
+        connection = sqlite3.connect(index_path(home))
+        try:
+            connection.execute("DELETE FROM experiences WHERE id = ?", (experience_id,))
+            connection.commit()
+        finally:
+            connection.close()
+    except sqlite3.Error as exc:
+        logger.warning("could not remove %s from search index: %s", experience_id, exc)
+        return False
+    return True
 
 
 def fts_search(home: Path, text: str, limit: int | None = None) -> list[str]:

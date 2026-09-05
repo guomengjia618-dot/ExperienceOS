@@ -25,6 +25,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from experienceos.core.errors import AmbiguousIdError, NotFoundError, StorageError
 from experienceos.core.models import SCHEMA_VERSION, Experience, utcnow
+from experienceos.storage.fts import remove_experience, upsert_experience
 from experienceos.storage.migrations import needs_migration, run_migrations
 
 logger = logging.getLogger("experienceos.storage")
@@ -67,6 +68,8 @@ class ExperienceStore:
             experience.model_dump_json(indent=2) + "\n", encoding="utf-8"
         )
         os.replace(tmp, target)
+        # best-effort: keeps the rebuildable search index from going stale
+        upsert_experience(self.root, experience)
         return target
 
     def delete(self, experience_id: str) -> bool:
@@ -75,6 +78,7 @@ class ExperienceStore:
         if not path.exists():
             return False
         path.unlink()
+        remove_experience(self.root, experience_id)
         return True
 
     # -- read ----------------------------------------------------------------

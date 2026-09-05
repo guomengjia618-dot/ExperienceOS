@@ -57,7 +57,9 @@ def query_results(store: ExperienceStore, query: SearchQuery) -> list[SearchResu
         if ids:
             by_id = {exp.id: exp for exp in experiences}
             candidates = [by_id[exp_id] for exp_id in ids if exp_id in by_id]
-            return search(candidates, query)
+            if candidates:
+                return search(candidates, query)
+            # every hit was stale (index older than the files) — full scan
     return search(experiences, query)
 
 

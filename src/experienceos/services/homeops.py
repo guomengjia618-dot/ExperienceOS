@@ -2,7 +2,9 @@
 
 The home directory is plain JSON + one config file, so it versions and
 archives cleanly. ``git_sync`` commits everything in the home (git
-itself respects ``.gitignore``); ``backup_home`` produces a restore-ready
+itself respects ``.gitignore`` — which this module keeps filled with the
+entries that must never leave the machine: interview transcripts and
+the rebuildable search index). ``backup_home`` produces a restore-ready
 zip — relative paths, no git internals, no scratch or backup files,
 because the JSON files are the source of truth (ADR D1).
 """
@@ -15,9 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from experienceos.core.errors import StorageError
+from experienceos.storage.fts import INDEX_FILENAME
 
 GIT_TIMEOUT_SECONDS = 60
-_EXCLUDED_DIR_NAMES = {".git", "backup"}
+_EXCLUDED_DIR_NAMES = {".git", "backup", "drafts"}
+_GITIGNORE_ENTRIES = ("drafts/", INDEX_FILENAME)
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,8 @@ def git_sync(home: Path, message: str, push_remote: str | None, init: bool) -> S
         if result.returncode != 0:
             raise StorageError(f"git init failed: {_first_line(result.stderr)}")
         initialized = True
+
+    _ensure_gitignore(home)
 
     add = _git(home, "add", "-A")
     if add.returncode != 0:
@@ -114,8 +120,30 @@ def _archive_files(home: Path) -> list[Path]:
             continue
         if path.name.endswith(".tmp"):
             continue  # edit scratch files are never restorable state
+        if path.name == INDEX_FILENAME:
+            continue  # rebuildable search cache, not restorable state (ADR D1)
         files.append(path)
     return files
+
+
+def _ensure_gitignore(home: Path) -> None:
+    """Keep transcripts and the rebuildable index out of version control.
+
+    Runs on every sync, so a home that became a repository before any
+    transcript existed is still protected (interview transcripts are the
+    only AI conversation material that ever touches disk).
+    """
+    gitignore = home / ".gitignore"
+    try:
+        existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
+        present = {line.strip() for line in existing.splitlines()}
+        missing = [entry for entry in _GITIGNORE_ENTRIES if entry not in present]
+        if not missing:
+            return
+        merged = (existing.rstrip("\n") + "\n") if existing.strip() else ""
+        gitignore.write_text(merged + "\n".join(missing) + "\n", encoding="utf-8")
+    except OSError:  # pragma: no cover - best-effort protection only
+        pass
 
 
 def _first_line(text: str) -> str:

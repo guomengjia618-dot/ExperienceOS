@@ -96,6 +96,18 @@ class TestExtraction:
         assert "4 recognized source file(s)" in exp.context
         assert "3 language(s)" in exp.context
 
+    def test_shebang_lines_never_become_description(self, extractor, tmp_path) -> None:
+        root = tmp_path / "scripted"
+        root.mkdir()
+        (root / "run.py").write_text("print('x')\n", encoding="utf-8")
+        (root / "README.md").write_text(
+            "#!/usr/bin/env python\n# Scripted Tool\n\nDoes scripted things.\n",
+            encoding="utf-8",
+        )
+        exp = next(iter(extractor.extract(str(root)))).experience
+        assert "env python" not in exp.description
+        assert "Does scripted things." in exp.description
+
     def test_junk_directories_are_pruned(self, extractor, tmp_path) -> None:
         root = tmp_path / "with-junk"
         (root / "node_modules" / "left-pad").mkdir(parents=True)

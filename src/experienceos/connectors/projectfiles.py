@@ -153,10 +153,15 @@ def _readme_excerpt(path: Path) -> list[str]:
                 continue
         lines: list[str] = []
         for line in text.splitlines():
-            stripped = line.strip().lstrip("#").strip()
-            if not stripped or stripped in _DESCRIPTION_JUNK_PREFIXES:
+            stripped = line.strip()
+            # the raw line decides plumbing: a shebang has its "#" eaten by
+            # the heading-strip below, so test before stripping it
+            if not stripped or stripped.startswith(_DESCRIPTION_JUNK_PREFIXES):
                 continue
-            lines.append(stripped)
+            content = stripped.lstrip("#").strip()
+            if not content:
+                continue  # a bare markdown heading
+            lines.append(content)
             if len(lines) >= MAX_DESCRIPTION_LINES:
                 break
         if not lines:

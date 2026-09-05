@@ -65,6 +65,26 @@ class TestTechnologyTimeline:
         assert python.records == 2 and python.ongoing is True
         assert spans[1].ongoing is True and spans[1].records == 1
 
+    def test_spelling_differences_merge_into_one_row(self, make_experience) -> None:
+        spans = technology_timeline(
+            [
+                make_experience(
+                    period={"start": "2022-01", "end": "2022-03"},
+                    technology=["Python"],
+                ),
+                make_experience(
+                    period={"start": "2022-05", "end": None},
+                    technology=["python"],
+                ),
+            ]
+        )
+        assert len(spans) == 1
+        span = spans[0]
+        assert span.name == "Python"  # first-seen spelling is displayed
+        assert span.records == 2
+        assert span.first == "2022-01" and span.last == "2022-05"
+        assert span.ongoing is True
+
 
 class TestCooccurrence:
     def test_pairs_counted_and_ranked(self, make_experience) -> None:

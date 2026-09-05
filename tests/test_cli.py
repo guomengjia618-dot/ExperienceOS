@@ -97,6 +97,20 @@ def test_list_and_show(cli_env: Any, make_experience) -> None:
     assert exp_id in shown.output
 
 
+def test_list_rejects_bad_filters_cleanly(cli_env: Any) -> None:
+    """Bad --since/--until/--limit must be one-line errors, not tracebacks."""
+    for args in (
+        ["list", "--since", "2024-13"],
+        ["list", "--until", "nonsense"],
+        ["list", "--limit", "-1"],
+    ):
+        result = runner.invoke(app, args)
+        output = full_output(result)
+        assert result.exit_code == 1, output
+        assert "must be" in output
+        assert "Traceback" not in output
+
+
 
 
 def test_show_uses_ascii_safe_rendering(cli_env: Any, make_experience) -> None:
@@ -265,6 +279,18 @@ def test_edit_rejects_invalid_json(
     # the original record is untouched and the edits are kept for retry
     assert ExperienceStore(cli_env).load(exp_id).title == "Demo Project"
     assert (Path(cli_env) / "experiences" / f".{exp_id}.edit.tmp").exists()
+
+
+def test_edit_reports_missing_editor(
+    cli_env: Any, make_experience, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    exp_id = seed(cli_env, make_experience)
+    monkeypatch.setenv("EDITOR", "experienceos-editor-does-not-exist")
+    result = runner.invoke(app, ["edit", exp_id[:12]])
+    output = full_output(result)
+    assert result.exit_code == 1, output
+    assert "not found" in output
+    assert "Traceback" not in output
 
 
 # -- config & AI diagnostics (#010) ------------------------------------------

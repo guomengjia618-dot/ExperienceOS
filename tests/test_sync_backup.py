@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 
 from experienceos.cli.app import app
 from experienceos.storage import ExperienceStore
+from experienceos.storage.fts import INDEX_FILENAME
 
 runner = CliRunner()
 
@@ -77,6 +78,26 @@ class TestSync:
         assert result.exit_code == 0, output
         assert "nothing to commit" in output
 
+    def test_transcripts_never_enter_history(self, seeded_home: Path) -> None:
+        """A transcript that predates the repo must not be committed either."""
+        home = seeded_home
+        drafts_dir = home / "drafts"
+        drafts_dir.mkdir()
+        transcript = drafts_dir / "interview-20260830-120000.md"
+        transcript.write_text("private conversation", encoding="utf-8")
+        result = runner.invoke(app, ["sync", "--init"])
+        assert result.exit_code == 0, full(result)
+        gitignore = (home / ".gitignore").read_text(encoding="utf-8")
+        assert "drafts/" in gitignore.splitlines()
+        assert INDEX_FILENAME in gitignore.splitlines()
+        tracked = git(home, "ls-files")
+        assert not any(name.startswith("drafts/") for name in tracked.splitlines())
+        # later transcript edits stay excluded too
+        transcript.write_text("private conversation v2", encoding="utf-8")
+        assert runner.invoke(app, ["sync"]).exit_code == 0
+        tracked = git(home, "ls-files")
+        assert not any(name.startswith("drafts/") for name in tracked.splitlines())
+
     def test_push_to_local_bare_remote(self, seeded_home: Path, tmp_path: Path) -> None:
         remote = tmp_path / "remote.git"
         subprocess.run(
@@ -112,6 +133,25 @@ class TestBackup:
         assert not any(".git/" in name for name in names)
         assert not any("backup/" in name for name in names)
         assert not any(name.endswith(".tmp") for name in names)
+
+    def test_backup_excludes_transcripts_and_search_index(
+        self, seeded_home: Path, tmp_path: Path
+    ) -> None:
+        home = seeded_home
+        drafts_dir = home / "drafts"
+        drafts_dir.mkdir()
+        (drafts_dir / "interview-20260830-120000.md").write_text(
+            "private conversation", encoding="utf-8"
+        )
+        (home / INDEX_FILENAME).write_bytes(b"not really sqlite")
+        out = tmp_path / "bundle.zip"
+        result = runner.invoke(app, ["backup", "--out", str(out)])
+        assert result.exit_code == 0, full(result)
+        with zipfile.ZipFile(out) as archive:
+            names = archive.namelist()
+        assert not any(name.startswith("drafts/") for name in names)
+        assert INDEX_FILENAME not in names
+        assert "config.toml" in names  # the rest of the home is intact
 
     def test_default_target_in_cwd(
         self, seeded_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

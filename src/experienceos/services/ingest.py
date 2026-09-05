@@ -48,14 +48,22 @@ def resolve_drafts(
 
 
 def save_drafts(store: ExperienceStore, drafts: list[ExperienceDraft]) -> list[str]:
-    """Persist confirmed drafts; creation never overwrites records."""
+    """Persist confirmed drafts; creation never overwrites records.
+
+    Every id is checked before anything is written, so a mid-batch
+    conflict aborts the whole import instead of leaving a partial save.
+    """
+    conflicts = [
+        draft.experience.id for draft in drafts if store.exists(draft.experience.id)
+    ]
+    if conflicts:
+        raise StorageError(
+            f"record id conflict: {', '.join(conflicts[:3])} already exists "
+            f"({len(conflicts)} of {len(drafts)} conflict; import never "
+            "overwrites records, nothing was saved)"
+        )
     saved_ids: list[str] = []
     for draft in drafts:
-        if store.exists(draft.experience.id):
-            raise StorageError(
-                f"record id conflict: {draft.experience.id} already exists "
-                "(import never overwrites records)"
-            )
         store.save(draft.experience)
         saved_ids.append(draft.experience.id)
     return saved_ids

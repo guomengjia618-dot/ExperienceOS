@@ -58,6 +58,8 @@ class SearchQuery:
         for label, value in (("since", self.since), ("until", self.until)):
             if value is not None and not is_valid_year_month(value):
                 raise ValueError(f"{label} must be YYYY-MM, got {value!r}")
+        if self.limit is not None and self.limit < 0:
+            raise ValueError(f"limit must be >= 0, got {self.limit}")
 
 
 @dataclass

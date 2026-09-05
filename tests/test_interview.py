@@ -225,6 +225,32 @@ class TestInterviewCli:
         assert len(drafts) == 1
         assert "built a thing" in drafts[0].read_text(encoding="utf-8")
 
+    def test_domain_invalid_draft_keeps_transcript_in_drafts(
+        self, cli_env, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Valid JSON with domain-invalid values must also rescue the transcript.
+
+        A too-long title fails ``ExperienceDraft.create`` with
+        ``ValidationError`` (not ``ValueError``); losing the conversation
+        here would force the user to redo the whole interview.
+        """
+        fake_provider(
+            monkeypatch,
+            "Tell me more.",
+            '{"title": "' + "x" * 300 + '", "type": "personal"}',
+        )
+        result = runner.invoke(
+            app,
+            ["interview"],
+            input="built a thing\n/done\n",
+        )
+        output = full(result)
+        assert result.exit_code == 1, output
+        assert "drafts" in output
+        drafts = list(Path(cli_env, "drafts").glob("interview-*.md"))
+        assert len(drafts) == 1
+        assert "built a thing" in drafts[0].read_text(encoding="utf-8")
+
     def test_no_ai_wizard_needs_no_provider(self, cli_env) -> None:
         result = runner.invoke(
             app,

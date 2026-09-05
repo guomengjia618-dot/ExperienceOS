@@ -151,6 +151,67 @@ class TestDispatch:
         assert indexed[0].matched_fields
 
 
+class TestIndexFreshness:
+    """store.save/delete keep the index in step (no silent staleness)."""
+
+    def test_save_after_rebuild_stays_searchable(
+        self,
+        cli_env,
+        small_library: ExperienceStore,
+        make_experience,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("EXPERIENCEOS_FTS_THRESHOLD", "1")
+        build_index(cli_env, small_library.list_all())
+        small_library.save(
+            make_experience(title="Cache Layer", description="redis eviction policy")
+        )
+        results = run_query(small_library, SearchQuery(text="redis"))
+        assert {exp.title for exp in results} == {"Cache Layer"}
+
+    def test_delete_removes_from_index(
+        self, cli_env, small_library: ExperienceStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("EXPERIENCEOS_FTS_THRESHOLD", "1")
+        build_index(cli_env, small_library.list_all())
+        victim = next(
+            exp for exp in small_library.list_all() if exp.title == "Payment Gateway"
+        )
+        assert small_library.delete(victim.id) is True
+        assert fts_search(cli_env, "payment") == []
+        remaining = run_query(small_library, SearchQuery(text="engine"))
+        assert {exp.title for exp in remaining} == {"Search Engine"}
+
+    def test_edit_reindexes_the_new_text(
+        self, cli_env, small_library: ExperienceStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("EXPERIENCEOS_FTS_THRESHOLD", "1")
+        build_index(cli_env, small_library.list_all())
+        record = next(
+            exp for exp in small_library.list_all() if exp.title == "Payment Gateway"
+        )
+        record.title = "Checkout Service"
+        small_library.save(record)
+        assert fts_search(cli_env, "payment") == []
+        results = run_query(small_library, SearchQuery(text="checkout"))
+        assert {exp.id for exp in results} == {record.id}
+
+    def test_all_stale_hits_fall_back_to_full_scan(
+        self, cli_env, small_library: ExperienceStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from experienceos.services import experiences as experiences_service
+
+        monkeypatch.setenv("EXPERIENCEOS_FTS_THRESHOLD", "1")
+        build_index(cli_env, small_library.list_all())
+
+        def bogus_hits(home, text, limit=None):
+            return ["exp_does_not_exist"]
+
+        monkeypatch.setattr(experiences_service.fts_module, "fts_search", bogus_hits)
+        results = run_query(small_library, SearchQuery(text="engine"))
+        assert {exp.title for exp in results} == {"Search Engine"}
+
+
 class TestCli:
     def test_index_rebuild_reports_count(self, cli_env, small_library: ExperienceStore) -> None:
         result = runner.invoke(app, ["index", "rebuild"])
