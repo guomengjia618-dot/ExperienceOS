@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from experienceos.ai.provider import LLMProvider, MockProvider, ModelResponse, ToolCall
+from experienceos.ai.provider import LLMProvider, ModelResponse, RecordedProvider, ToolCall
 from experienceos.ai.tools import ExperienceToolRegistry
 from experienceos.ai.workflow import (
     EvidenceBriefWorkflow,
@@ -156,7 +156,7 @@ def _redacted_error(error: str | None) -> str | None:
     return "<redacted:execution_error>"
 
 
-def _recorded_provider(case: EvalCase) -> MockProvider:
+def _recorded_provider(case: EvalCase) -> RecordedProvider:
     responses: list[ModelResponse | Exception] = []
     for turn in case.recorded_turns:
         if turn.error is not None:
@@ -174,7 +174,7 @@ def _recorded_provider(case: EvalCase) -> MockProvider:
                 ),
             )
         )
-    return MockProvider(responses=responses, name=f"eval-recording:{case.id}")
+    return RecordedProvider(responses=responses, name=f"eval-recording:{case.id}")
 
 
 def run_evaluation(

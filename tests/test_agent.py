@@ -14,7 +14,7 @@ from experienceos.ai.evaluation import (
     run_evaluation,
     save_evaluation_report,
 )
-from experienceos.ai.provider import MockProvider, ModelResponse, ToolCall
+from experienceos.ai.provider import ModelResponse, RecordedProvider, ToolCall
 from experienceos.ai.reporting import save_run_report
 from experienceos.ai.schemas import BriefCitation, EvidenceBrief
 from experienceos.ai.tools import ExperienceToolRegistry
@@ -88,7 +88,7 @@ def test_workflow_calls_tools_and_validates_structured_output(
         evidence=[{"kind": "repo", "location": "github.com/example/search"}],
     )
     store.save(exp)
-    provider = MockProvider(
+    provider = RecordedProvider(
         [
             ModelResponse(
                 tool_calls=(
@@ -125,7 +125,7 @@ def test_workflow_resumes_after_provider_failure(home, store, make_experience) -
         evidence=[{"kind": "repo", "location": "github.com/example/recover"}],
     )
     store.save(exp)
-    first_provider = MockProvider(
+    first_provider = RecordedProvider(
         [
             ModelResponse(
                 tool_calls=(
@@ -152,7 +152,7 @@ def test_workflow_resumes_after_provider_failure(home, store, make_experience) -
     assert [event.name for event in paused.tool_events] == ["get_experience"]
 
     incompatible = EvidenceBriefWorkflow(
-        provider=MockProvider([final_brief(exp)], name="other-provider"),
+        provider=RecordedProvider([final_brief(exp)], name="other-provider"),
         tools=ExperienceToolRegistry(store),
         checkpoints=checkpoints,
     )
@@ -160,7 +160,7 @@ def test_workflow_resumes_after_provider_failure(home, store, make_experience) -
         incompatible.resume(workflow_id)
 
     resumed = EvidenceBriefWorkflow(
-        provider=MockProvider([final_brief(exp)]),
+        provider=RecordedProvider([final_brief(exp)]),
         tools=ExperienceToolRegistry(store),
         checkpoints=checkpoints,
     ).resume(workflow_id)
@@ -173,7 +173,7 @@ def test_duplicate_tool_call_id_executes_only_once(home, store, make_experience)
     store.save(exp)
     duplicate = ToolCall("same-call", "get_experience", {"id_or_prefix": exp.id})
     workflow = EvidenceBriefWorkflow(
-        provider=MockProvider(
+        provider=RecordedProvider(
             [
                 ModelResponse(tool_calls=(duplicate, duplicate)),
                 final_brief(exp),
@@ -194,7 +194,7 @@ def test_sanitized_report_excludes_question_and_tool_results(
     exp = make_experience(title="Private Question Project")
     store.save(exp)
     workflow = EvidenceBriefWorkflow(
-        provider=MockProvider(
+        provider=RecordedProvider(
             [
                 ModelResponse(
                     tool_calls=(
@@ -225,7 +225,7 @@ def test_workflow_rejects_hallucinated_evidence_location(
     )
     store.save(exp)
     workflow = EvidenceBriefWorkflow(
-        provider=MockProvider(
+        provider=RecordedProvider(
             [
                 ModelResponse(
                     tool_calls=(

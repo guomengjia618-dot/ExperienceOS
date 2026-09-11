@@ -39,6 +39,20 @@ jobs:
           python examples/agent_demo.py --home .experienceos-ci-demo
           experienceos ai eval
 
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          pip install -e ".[ai,dev,github]"
+          pip install pytest-cov
+      - name: Test with coverage
+        run: python -m pytest --cov=experienceos --cov-report=term-missing --cov-fail-under=80
+
   package:
     runs-on: ubuntu-latest
     steps:

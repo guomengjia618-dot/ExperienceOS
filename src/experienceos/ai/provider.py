@@ -206,7 +206,7 @@ class OpenAICompatibleProvider:
 
 
 @dataclass
-class MockProvider:
+class RecordedProvider:
     """Deterministic recorded-response provider for tests, evals, and demos."""
 
     responses: list[ModelResponse | Exception]
@@ -262,16 +262,3 @@ def complete_structured(
         return output_model.model_validate_json(response.content)
     except PydanticValidationError as exc:
         raise AIProviderError(f"structured output failed local validation: {exc}") from exc
-
-
-def build_provider(config: AIConfig) -> LLMProvider:
-    """Build the provider adapter named by ``config.ai.provider``.
-
-    Kept for callers that predate :func:`experienceos.ai.factory.create_provider`;
-    accepts the historical ``openai``/``openai-compatible`` aliases.
-    """
-    if config.provider in ("openai-compat", "openai", "openai-compatible"):
-        return OpenAICompatibleProvider(config)
-    raise AIProviderError(
-        f"unknown ai.provider {config.provider!r}; supported: openai-compat"
-    )

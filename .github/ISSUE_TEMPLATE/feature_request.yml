@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose an improvement — ideally one that keeps the evidence-first promises.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should happen instead? Include CLI/API shape if relevant.
+    validations:
+      required: true
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      description: >
+        ExperienceOS has hard commitments — local-first storage, AI proposes
+        / humans decide, exports stay faithful projections. Does your idea
+        respect them (or propose changing them explicitly)?
+      options:
+        - label: This idea keeps the local-first / human-confirm guarantees.
+          required: true

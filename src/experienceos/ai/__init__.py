@@ -19,8 +19,8 @@ from experienceos.ai.provider import (
     Message,
     ModelResponse,
     OpenAICompatibleProvider,
+    RecordedProvider,
     ToolCall,
-    build_provider,
     complete_structured,
 )
 from experienceos.ai.responses import OpenAIResponsesProvider
@@ -43,9 +43,9 @@ __all__ = [
     "OpenAICompatibleProvider",
     "OpenAIResponsesProvider",
     "ProviderHealth",
+    "RecordedProvider",
     "ToolCall",
     "WorkflowCheckpointStore",
-    "build_provider",
     "complete_structured",
     "create_provider",
     "render_prompt",

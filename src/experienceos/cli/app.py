@@ -45,11 +45,8 @@ from experienceos.ai.provider import (
     LLMProvider,
     Message,
     ModelResponse,
-    build_provider,
+    RecordedProvider,
     complete_structured,
-)
-from experienceos.ai.provider import (
-    MockProvider as ScriptedProvider,
 )
 from experienceos.ai.reporting import build_run_report, save_run_report
 from experienceos.ai.schemas import ProviderHealth
@@ -333,7 +330,7 @@ def import_cmd(
     """
     store = _get_store(ctx)
     config = load_config(resolve_home(ctx.obj))
-    ai = AIExtraction(build_provider(config.ai), config.ai.model)
+    ai = AIExtraction(create_provider(config.ai), config.ai.model)
     extractor_name, drafts = ingest_services.resolve_drafts(
         source, author=author, material_extractor=ai
     )
@@ -412,7 +409,7 @@ def _interview_wizard_draft() -> ExperienceDraft:
 def _interview_ai_draft(home: Path, language: str) -> ExperienceDraft:
     """Conversation loop + extraction; the retry lives in AIExtraction."""
     config = load_config(home)
-    provider = build_provider(config.ai)
+    provider = create_provider(config.ai)
     model = config.ai.model
     console.print(
         "[dim]Conversation starts. Answer in your own words; type /done "
@@ -585,7 +582,7 @@ def enrich(
     store = _get_store(ctx)
     experience = _load_by_prefix(store, id)
     config = load_config(resolve_home(ctx.obj))
-    provider = build_provider(config.ai)
+    provider = create_provider(config.ai)
     raw = provider.complete(build_enrich_messages(experience))
     accepted, rejected = normalize_proposals(parse_proposals(raw))
     for reason in rejected:
@@ -1052,7 +1049,9 @@ def verify(
     token = os.environ.get("GITHUB_TOKEN", "")
     import httpx
 
-    with httpx.Client(follow_redirects=True) as client:
+    # redirects stay unfollowed: a crafted evidence URL must not be able to
+    # bounce the probe at internal addresses (3xx still proves existence)
+    with httpx.Client(follow_redirects=False) as client:
         github = GitHubAPI(client, token=token)
         checks = verify_services.verify_records(
             records, github=github, probe_url=_build_probe(client, httpx)
@@ -1357,7 +1356,7 @@ def ai_check(
 ) -> None:
     """Call the configured model and validate a tiny structured response."""
     if mock:
-        provider = ScriptedProvider(
+        provider = RecordedProvider(
             responses=[
                 ModelResponse(content='{"ok": true, "message": "structured output works"}')
             ]

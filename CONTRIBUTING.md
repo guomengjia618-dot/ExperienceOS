@@ -31,6 +31,19 @@ python -m ruff format --check src tests  # 如需格式化：ruff format
   `feat(cli): add stats command (#017)`、`fix(store): ...`、`docs: ...`
 - 一个 PR 只做一件事；关联 Issue 用 `Closes #N`。
 
+## 发布流程（维护者）
+
+发布完全由标签驱动（`.github/workflows/release.yml`）：
+
+1. 确认 main CI 全绿（lint / 测试矩阵 / coverage / wheel 冒烟）。
+2. 把 `CHANGELOG.md` 的 `[Unreleased]` 定版为 `x.y.z - 日期`，同步
+   `pyproject.toml` 与 `src/experienceos/__init__.py` 的版本号。
+3. 打附注标签并推送：`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`。
+4. 工作流自动：构建 sdist+wheel → 在仓库外安装 wheel 跑 `ai eval` 冒烟 →
+   创建 GitHub Release 并附产物 → 当仓库变量 `PYPI_PUBLISH=true` 且
+   pypi.org 已配置 trusted publisher（workflow `release.yml`、
+   environment `pypi`）时发布到 PyPI。
+
 ## PR 检查清单
 
 - [ ] `pytest` 与 `ruff check` 本地通过（CI 会再跑一遍）

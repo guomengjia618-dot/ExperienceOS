@@ -15,9 +15,9 @@ from experienceos.ai.prompts import (
 from experienceos.ai.provider import (
     LLMProvider,
     Message,
-    MockProvider,
     ModelResponse,
     OpenAICompatibleProvider,
+    RecordedProvider,
     complete_structured,
 )
 from experienceos.ai.responses import OpenAIResponsesProvider
@@ -373,7 +373,7 @@ class TestProviderProtocol:
         assert second.content == '{"ok":true}'
 
     def test_structured_output_is_validated_locally(self) -> None:
-        provider = MockProvider([ModelResponse(content='{"ok": "not-a-bool"}')])
+        provider = RecordedProvider([ModelResponse(content='{"ok": "not-a-bool"}')])
         with pytest.raises(AIProviderError, match="local validation"):
             complete_structured(
                 provider,

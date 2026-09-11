@@ -357,7 +357,7 @@ def test_ai_check_against_injected_fake_provider(
 ) -> None:
     import importlib
 
-    from experienceos.ai.provider import MockProvider, ModelResponse
+    from experienceos.ai.provider import ModelResponse, RecordedProvider
 
     # patch via importlib: `import experienceos.cli.app as x` and dotted
     # setattr strings both resolve to the Typer `app` instance because
@@ -366,7 +366,7 @@ def test_ai_check_against_injected_fake_provider(
     monkeypatch.setattr(
         cli_module,
         "create_provider",
-        lambda config: MockProvider(
+        lambda config: RecordedProvider(
             responses=[ModelResponse(content='{"ok": true, "message": "pong"}')]
         ),
     )

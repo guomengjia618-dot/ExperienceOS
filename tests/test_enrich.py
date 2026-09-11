@@ -24,7 +24,7 @@ runner = CliRunner()
 def fake_provider(monkeypatch: pytest.MonkeyPatch, *replies: str) -> MockProvider:
     cli_module = importlib.import_module("experienceos.cli.app")
     provider = MockProvider(*replies)
-    monkeypatch.setattr(cli_module, "build_provider", lambda config: provider)
+    monkeypatch.setattr(cli_module, "create_provider", lambda config: provider)
     return provider
 
 

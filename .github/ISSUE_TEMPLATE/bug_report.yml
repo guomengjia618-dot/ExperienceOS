@@ -1,0 +1,33 @@
+name: Bug report
+description: Something broke — tell us what, where, and how to reproduce it.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please include the
+        command you ran and, if possible, the record files involved
+        (redact anything private — the project cannot see your data anyway).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Expected vs actual behavior, including the full error text.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. experienceos …
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / platform
+      placeholder: "experienceos 0.7.0, Windows 11, Python 3.12"
+    validations:
+      required: true

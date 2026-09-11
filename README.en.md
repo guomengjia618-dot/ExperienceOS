@@ -112,7 +112,10 @@ tool sequence 100% · schema 100% · grounding 100% · completion 100% · recove
 The 9 labelled cases assert tool-call sequences, schema validity, citation
 grounding and error recovery; `--live` runs the same suite against a real
 model. The dataset ships with a sha256 manifest that states what these
-numbers are **not** valid for.
+numbers are **not** valid for. Honest boundary: grounding validation is an
+*existence* check — it proves cited evidence was actually loaded during the
+run, not that the conclusions are semantically entailed; human judgment on
+the conclusions remains part of the contract.
 
 **Evidence can be verified** — `experienceos verify` confronts every
 GitHub-backed claim with the REST API: repositories, commits (author and

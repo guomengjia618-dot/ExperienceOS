@@ -12,17 +12,17 @@ Experience（经历资产）：统一建模工作项目、实习、开源贡献�
 ```
 ┌────────────────────────────────────────────────────────────┐
 │                        用户接口层                           │
-│   CLI (typer)          API (FastAPI, M4)      Web UI (M4+) │
+│  CLI (typer)    API (FastAPI, 只读)    Web 工作台 (#033)    │
 ├────────────────────────────────────────────────────────────┤
 │                        服务层（用例）                       │
 │   ingest（导入）  enrich（提炼）  interview（录入）          │
-│   search / export / stats                                   │
+│   search / export / stats / verify（证据核验，M6）           │
 ├──────────────┬─────────────────────┬───────────────────────┤
 │  connectors  │        ai           │      exporters        │
-│  github      │  LLMProvider 协议    │  markdown / json-resume│
-│  git-repo    │  提取管线 extraction  │                       │
-│  project-files  版本化 Prompts      │                       │
-│  resume      │                     │                       │
+│  github      │  证据简报工作流(#032) │  markdown / json-resume│
+│  git-repo    │  只读工具 + 评测集    │  html                  │
+│  project-files  provider(兼容/Responses)                    │
+│  resume      │  版本化 Prompts      │                       │
 ├──────────────┴─────────────────────┴───────────────────────┤
 │                      storage 存储层                         │
 │   ExperienceStore（文件 source of truth）+ 内存查询引擎      │
@@ -35,8 +35,9 @@ Experience（经历资产）：统一建模工作项目、实习、开源贡献�
 
 依赖方向自上而下单向依赖 `core`；兄弟层之间互不依赖（connectors 与
 ai 之间需要协作时，协议定义在被依赖方、实现由服务层注入，见 D7）。
-`core` 不依赖任何其他层。以上规则由 `tests/test_layering.py` 用 AST
-静态检查强制执行，不靠自觉。
+`core` 不依赖任何其他层。唯一豁免：ai 的只读工具缝隙（tools / 评测 /
+demo）允许向下 import storage——工具必须读真实档案才能约束模型，这是
+向下的、无环的依赖，由 `tests/test_layering.py` 的规则表显式放行。
 
 ## 2. 数据流
 
@@ -112,10 +113,13 @@ git 版本化、可随身拷贝。任何「索引」都应是可重建的派生�
 
 ### D4：AI 层只依赖协议，不锁定厂商
 
-`LLMProvider` 是一个 `complete(messages) -> str` 的 Protocol；M0 附带
-OpenAI 兼容实现（覆盖 OpenAI / GLM / DeepSeek / vLLM / Ollama 等一切
-兼容端点）。Prompt 是带版本的代码，测试断言其不变量（不捏造、要求 JSON、
-标记 provenance）。
+`LLMProvider` 是 `generate(messages, response_schema, tools) -> ModelResponse`
+的 Protocol——结构化输出与函数工具调用是一等公民；`complete()` 只是兼容
+助手。随箱带两个实现（OpenAI 兼容 chat 与 Responses API），由
+`ai.factory.create_provider` 按配置选择；工作流对厂商零感知。Prompt 是
+带版本的代码，测试断言其不变量（不捏造、要求 JSON、标记 provenance）。
+模型请求的指标（延迟 / token / 重试 / 可选成本费率）由传输层采集并进入
+脱敏报告；重试预算、抖动与费率全部显式配置，不靠魔法数。
 
 ### D5：CLI-first
 
@@ -155,22 +159,60 @@ connector（如 PDF 简历）通过 `connectors.base` 定义的
 丢弃相关性排序。查询语义必须只有一个定义处（`storage.query.search`），
 索引是加速器而不是第二种真相。
 
+### D9：证据简报工作流——先读档、接地、可恢复（M6 #032）
+
+**决策**：`EvidenceBriefWorkflow` 把「模型回答关于本地档案的问题」变成
+一个有界的状态机：(1) 模型只能通过三个只读工具
+（`search_experiences` / `get_experience` / `get_evidence_stats`）接触
+档案；(2) 输出是严格 schema 的 `EvidenceBrief`，其中每条引用的
+`evidence_locations` 必须逐一对应**本次运行中** `get_experience` 读到的
+证据位置——不接地即 `WorkflowError`，运行转 paused 而不是输出幻觉；
+(3) 每轮对话原子持久化到 `<home>/workflows/wf_*.json`，中断后
+`resume` 精确续跑，已完成的工具调用不会重放；(4) 9 用例评测集把工具
+调用序列、schema 合法性、接地与恢复断言成回归测试。
+
+**理由**：LLM 的失败模式是「自信地编造」。与其在输出后过滤，不如在
+工作流层让编造**无法通过**：引用必须指向本次读取的真实证据。检查点
+则把「网络断了」从错误降级为暂停。
+
+**代价与边界**：接地校验是**存在性校验**（引用的证据确实被读取过），
+不是语义蕴含校验——它不能保证结论被证据支持，只能保证结论的出处可
+回溯。`--recorded`/评测回放让这条路径完全离线可测；供应商差异被 D4
+的协议隔离。
+
+### D10：证据核验是镜子，不是改写器（M6）
+
+**决策**：`services.verify` + `experienceos verify` 把记录声明的证据
+拿到网络对证——GitHub 仓库 / commit（含作者与日期）/ PR（作者、状态、
+是否合并）逐条核验存在性；非 GitHub URL 只做存在性探测（不跟随重定
+向，防探测被弹向内网）；本地路径如实跳过。结果只进报告（终端或
+`--json`），**绝不回写记录**；发现失效证据以退出码 1 退出，供 CI 门禁。
+
+**理由**：证据的价值在于可被证伪。核验如果顺手改写记录（比如自动加
+"verified" 标记），就违背了「导出物是忠实投影」与「AI propose, human
+decide」两条铁律——状态变化必须由人确认。
+
 ## 5. 目录结构
 
 ```
 src/experienceos/
   core/         # 领域层：models.py / draft.py / ulid.py / errors.py / guardrails.py
-  storage/      # store.py（文件仓库）/ query.py（查询引擎）/ fts.py / migrations.py
+  storage/      # store.py（文件仓库 + stat 缓存）/ query.py / fts.py / migrations.py
   connectors/   # base.py（协议+草稿+注入协议）/ languages.py / github / gitrepo
                 #   / projectfiles / resume / registry.py
-  ai/           # provider.py（协议）/ extraction.py（物料→草稿管线）
-                #   / interview.py（会话支持）/ prompts.py（版本化模板）
-  services/     # experiences.py（查询/统计用例）/ ingest.py（导入接线）/ homeops.py
-  exporters/    # base.py（协议）/ markdown / json_resume / registry.py
+  ai/           # workflow.py（证据简报状态机）/ tools.py（只读工具）
+                #   / evaluation.py（评测 harness）/ demo.py（录播 provider）
+                #   / provider.py + transport.py + responses.py（协议与实现）
+                #   / extraction.py / interview.py / prompts.py（版本化模板）
+  services/     # experiences.py / ingest.py / homeops.py / verify.py（证据核验）
+  exporters/    # base.py / markdown / json_resume / html / registry.py
+  web/          # server.py + demo.py + static/（本地工作台，零依赖）
   cli/          # app.py（命令）/ render.py（rich 渲染）
   api/          # app.py（FastAPI 薄壳）
   config.py     # home 解析 + config.toml 读写
 tests/          # 单元 + CLI 端到端（含离线 GitHub API fixtures）+ 分层守卫
+evals/          # 9 条带标签评测用例 + sha256 manifest
+examples/       # 可运行的离线 agent 演示
 docs/           # 架构 / 路线图 / Issue 拆分
 ```
 

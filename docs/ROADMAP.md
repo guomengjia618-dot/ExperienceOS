@@ -70,6 +70,23 @@ Issue 明细见 [issues/](issues/)，标签体系：`area/core` `area/cli`
 - ✅ #031 未来用户规划落档（设计师 / 研究人员 / 创作者的扩展路径，
   见下文「未来用户」）
 
+## M6 — 工作台（v0.7.0）✅ 2026-09-11
+
+**目标**：把 AI 层从"命令行工具"升级为"可检验、可展示的系统"——
+模型必须先读档再作答，AI 质量有评测集兜底，浏览器里能看到全过程。
+
+- ✅ #032 证据简报工作流 + 评测 harness（只读工具强制先读档；引用接地
+  校验；原子检查点断点恢复；9 用例确定性回归 + `--live` 真模型评测；
+  脱敏运行报告）
+- ✅ #033 本地浏览器工作台（`experienceos web`：零依赖 http.server +
+  原生 JS 前端；离线演示模式；Host/Origin/CSP 加固；仅绑 loopback）
+- ✅ #034 运行记录下拉重做（问题摘要 + 状态圆点 + 相对时间，键盘可导航）
+- ✅ 证据核验（`experienceos verify`：GitHub 仓库/commit/PR 联网对证，
+  非 GitHub 链接存在性探测，`--json` 报告，可接 CI）
+- ✅ HTML 导出器（自包含、打印即 PDF 的个人档案页）
+- ✅ 发布工程（tag 触发构建 + wheel 仓库外冒烟 + GitHub Release +
+  PyPI trusted publishing 门控）
+
 ## 未来用户
 
 当前阶段聚焦开发者；数据模型与导出格式刻意保持职业中立（Experience
@@ -82,8 +99,12 @@ Issue 明细见 [issues/](issues/)，标签体系：`area/core` `area/cli`
 
 ## Backlog（暂不排期）
 
-- #023 CLI i18n（中英双语 help）
-- #024 mypy strict + 类型覆盖率门禁
-- #025 文档站点（mkdocs-material）
-- #026 Web UI（只读浏览 + 编辑确认，服务端复用 FastAPI）
-- #032 CLI 命令分组拆分（命令数继续增长时按域拆为子模块）
+> 编号说明：#023–#026 曾预留给一次未落地的重构方案，编号作废保留；
+> 正式交付从 #027（M5）与 #032（M6）续起，Backlog 项领取时重新编号。
+
+- #035 CLI i18n（中英双语 help；同时统一现有命令的中英混排输出）
+- #036 mypy strict + 类型覆盖率门禁
+- #037 文档站点（mkdocs-material）
+- #038 Web 编辑界面（当前工作台覆盖浏览/分析/恢复；补编辑与确认流，
+  服务端复用 FastAPI）
+- #039 CLI 命令分组拆分（命令数继续增长时按域拆为子模块）

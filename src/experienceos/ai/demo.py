@@ -8,13 +8,13 @@ validation run through the same production path as a live model.
 
 from __future__ import annotations
 
-from experienceos.ai.provider import MockProvider, ModelResponse, ToolCall
+from experienceos.ai.provider import ModelResponse, RecordedProvider, ToolCall
 from experienceos.ai.schemas import BriefCitation, EvidenceBrief
 from experienceos.core.errors import WorkflowError
 from experienceos.storage import ExperienceStore
 
 
-def build_recorded_demo_provider(store: ExperienceStore) -> MockProvider:
+def build_recorded_demo_provider(store: ExperienceStore) -> RecordedProvider:
     experiences = store.list_all()
     if not experiences:
         raise WorkflowError("离线演示至少需要一条经历，请先新增或导入经历")
@@ -41,7 +41,7 @@ def build_recorded_demo_provider(store: ExperienceStore) -> MockProvider:
         evidence_gaps=gap,
         next_actions=["核对引用记录，并为尚无证据支撑的成果补充材料。"],
     )
-    return MockProvider(
+    return RecordedProvider(
         responses=[
             ModelResponse(
                 tool_calls=(
