@@ -31,7 +31,7 @@ jobs:
           "$RUNNER_TEMP/wheel-check/bin/pip" install dist/*.whl
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/wheel-check/bin/experienceos" ai eval --report eval.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
