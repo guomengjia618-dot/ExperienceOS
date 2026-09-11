@@ -128,3 +128,57 @@ def test_works_without_experiences_dir(tmp_path: Path) -> None:
     assert store.list_all() == []
     assert store.all_ids() == []
     assert store.validate() == []
+
+
+class TestListCache:
+    """The stat-keyed cache must be invisible to callers."""
+
+    def test_repeated_reads_are_consistent(
+        self, store: ExperienceStore, make_experience
+    ) -> None:
+        exp = make_experience(title="Cached")
+        store.save(exp)
+        first = store.list_all()
+        second = store.list_all()
+        assert [e.model_dump() for e in first] == [e.model_dump() for e in second]
+
+    def test_external_edit_is_picked_up(
+        self, store: ExperienceStore, make_experience
+    ) -> None:
+        exp = make_experience(title="Before")
+        store.save(exp)
+        assert store.list_all()[0].title == "Before"
+        path = store.path_of(exp.id)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["title"] = "After"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        assert store.list_all()[0].title == "After"
+
+    def test_external_delete_is_picked_up(
+        self, store: ExperienceStore, make_experience
+    ) -> None:
+        exp = make_experience()
+        store.save(exp)
+        assert len(store.list_all()) == 1
+        store.path_of(exp.id).unlink()
+        assert store.list_all() == []
+
+    def test_caller_mutation_never_poisons_the_cache(
+        self, store: ExperienceStore, make_experience
+    ) -> None:
+        exp = make_experience(title="Original")
+        store.save(exp)
+        loaded = store.load(exp.id)
+        loaded.title = "Mutated In Place"
+        assert store.load(exp.id).title == "Original"
+        assert store.list_all()[0].title == "Original"
+
+    def test_save_updates_the_served_instance(
+        self, store: ExperienceStore, make_experience
+    ) -> None:
+        exp = make_experience(title="Original")
+        store.save(exp)
+        assert store.list_all()[0].title == "Original"
+        exp.title = "Renamed"
+        store.save(exp)
+        assert store.list_all()[0].title == "Renamed"

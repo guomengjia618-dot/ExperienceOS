@@ -45,6 +45,11 @@ class ExperienceStore:
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
         self.experiences_dir = self.root / "experiences"
+        # stat-keyed memoization for repeated listings (every API request,
+        # every CLI command re-reads the whole library otherwise). Each read
+        # re-stats the file first, so an external edit invalidates itself;
+        # save/delete keep their own entries current.
+        self._cache: dict[str, tuple[tuple[int, int], Experience]] = {}
 
     @property
     def backup_dir(self) -> Path:
@@ -68,6 +73,7 @@ class ExperienceStore:
             experience.model_dump_json(indent=2) + "\n", encoding="utf-8"
         )
         os.replace(tmp, target)
+        self._cache_update(target, experience)
         # best-effort: keeps the rebuildable search index from going stale
         upsert_experience(self.root, experience)
         return target
@@ -78,6 +84,7 @@ class ExperienceStore:
         if not path.exists():
             return False
         path.unlink()
+        self._cache.pop(path.name, None)
         remove_experience(self.root, experience_id)
         return True
 
@@ -91,10 +98,43 @@ class ExperienceStore:
         path = self.path_of(experience_id)
         if not path.exists():
             raise NotFoundError(experience_id)
-        _id, experience, error = self._read_file(path)
+        _id, experience, error = self._cached_read(path)
         if experience is None:
             raise StorageError(f"cannot load {path.name}: {error}")
         return experience
+
+    def _cached_read(self, path: Path) -> tuple[str, Experience | None, str | None]:
+        """``_read_file`` behind the stat-keyed cache.
+
+        The cache keeps a pristine copy and callers get deep copies, so
+        mutating a returned record (as `set`/`enrich` do before saving)
+        never poisons later listings.
+        """
+        try:
+            stat = path.stat()
+        except OSError as exc:
+            self._cache.pop(path.name, None)
+            return path.stem, None, str(exc)
+        key = (stat.st_mtime_ns, stat.st_size)
+        hit = self._cache.get(path.name)
+        if hit is not None and hit[0] == key:
+            return hit[1].id, hit[1].model_copy(deep=True), None
+        _id, experience, error = self._read_file(path)
+        if experience is not None:
+            self._cache[path.name] = (key, experience.model_copy(deep=True))
+        else:
+            self._cache.pop(path.name, None)
+        return _id, experience, error
+
+    def _cache_update(self, path: Path, experience: Experience) -> None:
+        """Refresh one cache entry right after a successful write."""
+        try:
+            stat = path.stat()
+        except OSError:  # pragma: no cover - file was just replaced
+            self._cache.pop(path.name, None)
+            return
+        entry = (stat.st_mtime_ns, stat.st_size), experience.model_copy(deep=True)
+        self._cache[path.name] = entry
 
     def _read_file(self, path: Path) -> tuple[str, Experience | None, str | None]:
         """Return (id, experience, error); exactly one of experience/error set."""
@@ -162,7 +202,7 @@ class ExperienceStore:
         if not self.experiences_dir.is_dir():
             return experiences
         for path in sorted(self.experiences_dir.glob("*.json")):
-            _id, experience, error = self._read_file(path)
+            _id, experience, error = self._cached_read(path)
             if experience is None:
                 logger.warning("skipping unreadable experience file %s: %s", path, error)
             else:
@@ -183,7 +223,7 @@ class ExperienceStore:
         if not self.experiences_dir.is_dir():
             return issues
         for path in sorted(self.experiences_dir.glob("*.json")):
-            _id, _experience, error = self._read_file(path)
+            _id, _experience, error = self._cached_read(path)
             if error is not None:
                 issues.append(LoadIssue(path, error))
         return issues

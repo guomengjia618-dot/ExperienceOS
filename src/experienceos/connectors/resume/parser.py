@@ -93,6 +93,11 @@ BOUNDARY_HEADINGS: frozenset[str] = frozenset(
 _CJK_KEY_RE = re.compile(r"[\u4e00-\u9fff]")
 _HEADING_SUFFIX_RE = re.compile(r"^[：:（(【[，,、|｜/·.\-–—\s]")
 
+# precomputed key orderings: _heading_of runs once per input line and used
+# to re-sort both heading dicts on every call
+_SECTION_KEYS = sorted(SECTION_CATEGORIES, key=len, reverse=True)
+_BOUNDARY_KEYS = sorted(BOUNDARY_HEADINGS, key=len, reverse=True)
+
 # curated technology keywords; order matters only for the containment
 # check (longer names first suppress their substrings, e.g. "Spring Boot"
 # suppresses "Spring"). Bare "C" and "R" are excluded on purpose: as
@@ -192,8 +197,8 @@ def extract_technology(text: str) -> list[str]:
         name = span.strip()
         if name and _novel(name, found):
             found.append(name)
-    for name in sorted(TECHNOLOGY_KEYWORDS, key=len, reverse=True):
-        if _tech_pattern(name).search(text) and _novel(name, found):
+    for name in _TECH_KEYWORDS_BY_LEN:
+        if _TECH_PATTERNS[name].search(text) and _novel(name, found):
             found.append(name)
     return found[:MAX_TECHNOLOGY]
 
@@ -215,6 +220,15 @@ def _tech_pattern(name: str) -> re.Pattern[str]:
             rf"(?<![A-Za-z0-9+#]){escaped}(?![A-Za-z0-9+#])", re.IGNORECASE
         )
     return re.compile(escaped)  # CJK / mixed names: plain substring
+
+
+# compiled once per keyword instead of on every extract_technology call
+_TECH_KEYWORDS_BY_LEN: tuple[str, ...] = sorted(
+    TECHNOLOGY_KEYWORDS, key=len, reverse=True
+)
+_TECH_PATTERNS: dict[str, re.Pattern[str]] = {
+    name: _tech_pattern(name) for name in TECHNOLOGY_KEYWORDS
+}
 
 
 def _norm_point(year: str, month: str | None, default: int) -> str | None:
@@ -247,10 +261,10 @@ def _heading_of(line: str) -> tuple[str, str | None, str] | None:
     norm = _normalize(line)
     if not norm:
         return None
-    for key in sorted(SECTION_CATEGORIES, key=len, reverse=True):
+    for key in _SECTION_KEYS:
         if _matches_key(norm, key):
             return "experience", SECTION_CATEGORIES[key], norm
-    for key in sorted(BOUNDARY_HEADINGS, key=len, reverse=True):
+    for key in _BOUNDARY_KEYS:
         if _matches_key(norm, key):
             return "boundary", None, norm
     return None
