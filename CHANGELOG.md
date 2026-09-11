@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-11
+
+Workbench milestone (M6): the evidence-brief workflow, its evaluation
+harness, and a zero-dependency local browser workbench — plus network
+verification of evidence claims and a print-ready HTML export.
+
 ### Added
 
 - Evidence-brief workflow (#032): a checkpointed model/tool loop — the model
@@ -32,6 +38,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a custom listbox showing each run's question, status dot (running/
   paused/completed), mode and relative time; keyboard-navigable with
   outside-click/Escape dismissal.
+- Evidence verification: `experienceos verify [id-prefix]` checks GitHub-
+  backed evidence against the REST API — repositories, commits (with
+  author/date) and pull requests (author/state/merged). Non-GitHub URLs
+  get an existence probe; local paths are skipped. `--json` writes a
+  machine-readable report; exit code 1 on anything missing, so it can
+  gate CI like `lint`.
+- HTML exporter: `experienceos export html` renders a self-contained,
+  print-ready profile page (inline stylesheet, evidence links, escaped
+  verbatim content) — "Print → PDF" with no extra tooling.
+- Release engineering: tag-driven workflow builds sdist+wheel, smoke-tests
+  the wheel outside the repository, creates the GitHub Release, and
+  publishes to PyPI via trusted publishing when `PYPI_PUBLISH=true`.
 
 ### Changed
 

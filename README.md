@@ -1,5 +1,7 @@
 # ExperienceOS
 
+[English](README.en.md) | 简体中文
+
 [![CI](https://github.com/guomengjia618-dot/ExperienceOS/actions/workflows/ci.yml/badge.svg)](https://github.com/guomengjia618-dot/ExperienceOS/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -66,6 +68,7 @@ experienceos search "搜索引擎 inverted index"
 ```bash
 experienceos config set ai.model glm-4.7      # GLM / DeepSeek / OpenAI / Ollama 均可
 experienceos ai check                          # 结构化输出连通性自检
+experienceos ai eval --live                    # 用真实模型跑同一套评测集
 ```
 
 ## 导入：把碎片变成草稿
@@ -105,6 +108,11 @@ tool sequence 100% · schema 100% · grounding 100% · completion 100% · recove
 `--live` 可用真实模型跑同一数据集。数据集附 sha256 manifest，并明确声明
 这些数字**不**可用于模型准确率宣传。
 
+**证据可以自动核验**——`experienceos verify` 把每条 GitHub 证据拿去
+REST API 对证：仓库、commit（含作者与日期）、PR（作者/状态/是否合并），
+非 GitHub 链接做存在性探测，本地路径如实跳过；发现失效证据以退出码 1
+报告，可接入 CI。
+
 ![工作台的运行记录时间线：检索 → 逐条读取 → 证据统计 → 校验通过](docs/assets/workbench-timeline.png)
 
 ## 平台与导出
@@ -122,9 +130,11 @@ pip install 'experienceos[api]' && experienceos-serve   # 本地 REST API（只�
 ```bash
 experienceos export markdown                    # 个人档案（STAR + evidence）
 experienceos export markdown --timeline         # 按年分组的简表
+experienceos export html                        # 自包含网页档案（打印即 PDF）
 experienceos export json-resume                 # jsonresume.org 兼容格式
 experienceos profile                            # 技能时间线 / 共现 Top-N / 覆盖趋势
 experienceos stats --json                       # 机器可读统计
+experienceos verify                             # 联网核验 GitHub 证据（可接 CI）
 ```
 
 ## 架构

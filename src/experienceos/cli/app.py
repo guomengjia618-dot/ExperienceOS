@@ -62,6 +62,7 @@ from experienceos.ai.workflow import (
 from experienceos.cli import render
 from experienceos.config import load_config, resolve_home, save_config
 from experienceos.connectors import ExperienceDraft, default_registry
+from experienceos.connectors.github import GitHubAPI
 from experienceos.core.errors import (
     ExperienceOSError,
     NotFoundError,
@@ -81,6 +82,7 @@ from experienceos.plugins import load_plugins, plugin_summary
 from experienceos.presentation import tool_label
 from experienceos.services import experiences as services
 from experienceos.services import ingest as ingest_services
+from experienceos.services import verify as verify_services
 from experienceos.services.homeops import backup_home, git_sync
 from experienceos.stats import (
     evidence_coverage_by_year,
@@ -1018,6 +1020,85 @@ def lint(
         f"{len({issue.experience_id for issue in issues})} record(s)."
     )
     raise typer.Exit(code=1)
+
+
+@app.command()
+@_friendly_errors
+def verify(
+    ctx: typer.Context,
+    prefix: str = typer.Argument(
+        None, help="Record ID prefix; omit to verify every record."
+    ),
+    json_path: Path | None = typer.Option(
+        None, "--json", help="Write the machine-readable verification report."
+    ),
+) -> None:
+    """Check evidence URLs against the GitHub API (M6).
+
+    Existence is verified verbatim and authorship is reported as data.
+    Non-GitHub URLs get an existence probe; local paths are skipped.
+    Exit code 1 when anything is missing, so this can gate CI.
+    """
+    store = _get_store(ctx)
+    records = (
+        [store.load(store.resolve(prefix))]
+        if prefix
+        else store.list_all()
+    )
+    if not records:
+        console.print("No records to verify.")
+        return
+
+    token = os.environ.get("GITHUB_TOKEN", "")
+    import httpx
+
+    with httpx.Client(follow_redirects=True) as client:
+        github = GitHubAPI(client, token=token)
+        checks = verify_services.verify_records(
+            records, github=github, probe_url=_build_probe(client, httpx)
+        )
+
+    _MARKS = {"verified": "[green]✓[/green]", "missing": "[red]✗[/red]",
+              "unreachable": "[red]~[/red]", "error": "[red]![/red]",
+              "skipped": "[dim]-[/dim]"}
+    current_id = None
+    for check in checks:
+        if check.experience_id != current_id:
+            current_id = check.experience_id
+            console.print(f"\n[bold]{escape(check.title)}[/bold] "
+                          f"[dim]{render.short_id(check.experience_id)}[/dim]")
+        mark = _MARKS.get(check.status, "?")
+        console.print(
+            f"  {mark} [{check.kind}] {escape(check.location)}\n"
+            f"      {escape(check.detail)}"
+        )
+    counts = verify_services.summarize(checks)
+    console.print(
+        f"\n{len(checks)} evidence item(s): "
+        f"{counts['verified']} verified · {counts['missing']} missing · "
+        f"{counts['error']} error · {counts['unreachable']} unreachable · "
+        f"{counts['skipped']} skipped"
+    )
+    if json_path is not None:
+        saved = verify_services.save_report(checks, json_path)
+        console.print(f"[dim]Verification report: {saved}[/dim]")
+    if counts["missing"]:
+        raise typer.Exit(code=1)
+
+
+def _build_probe(client: Any, httpx: Any) -> Callable[[str], int]:
+    """Existence probe for non-GitHub URLs; network failures read as 599."""
+
+    def probe(url: str) -> int:
+        try:
+            response = client.get(url, timeout=15)
+            return int(response.status_code)
+        except httpx.HTTPError as exc:
+            raise ValueError(str(exc)) from exc
+        except OSError as exc:
+            raise ValueError(str(exc)) from exc
+
+    return probe
 
 
 # -- search index (#022) ------------------------------------------------------
