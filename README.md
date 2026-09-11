@@ -1,6 +1,11 @@
 # ExperienceOS
 
-> Never forget what you have built.
+[![CI](https://github.com/guomengjia618-dot/ExperienceOS/actions/workflows/ci.yml/badge.svg)](https://github.com/guomengjia618-dot/ExperienceOS/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+[![Coverage](https://img.shields.io/badge/tests-405%20passed-brightgreen)](#工程质量)
+
+> **Never forget what you have built.** 把你做过的每一件事，变成有证据支撑的经历资产。
 >
 > **English abstract** — ExperienceOS is an open-source personal experience
 > operating system for developers. It turns fragmented traces of what you
@@ -19,6 +24,8 @@ Operating System）。它帮助开发者记录、整理、理解和沉淀自己�
 ExperienceOS 要做的事情只有一件：**把这些碎片转化为有证据支撑的结构化
 经历资产（Experience Asset）**。
 
+![ExperienceOS 本地工作台](docs/assets/workbench-brief.png)
+
 ## 核心理念
 
 1. **发现、整理、保存真实经历** —— 而不是创造经历。ExperienceOS 不是
@@ -30,110 +37,85 @@ ExperienceOS 要做的事情只有一件：**把这些碎片转化为有证据�
 4. **本地优先（Local-first）**。你的经历库是纯 JSON 文件，存放在
    `~/.experienceos/`，人可读、可 git 版本化、永远属于你。
 
-## 快速开始
+## 5 分钟上手
+
+### 0) 先看效果：离线工作台（无需任何配置）
 
 ```bash
-# 需要 Python 3.10+
-python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -e ".[dev,github]"
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e .
+experienceos web                                    # 浏览器打开 http://127.0.0.1:8765
+```
 
+工作台自带 **离线演示模式**：3 条合成示例经历 + 确定性回放模型，完整演示
+AI 取证流程——检索经历 → 逐条读取 → 证据统计 → 生成带引用的证据简报，
+还可以模拟「模型中断」并从检查点恢复。全程不联网、不访问你的真实数据。
+
+### 1) 录入真实经历
+
+```bash
 experienceos init          # 初始化 ~/.experienceos
 experienceos add           # 交互式录入第一条经历
+experienceos import .      # 或直接把当前项目导入为草稿（见下文）
 experienceos list          # 浏览全部经历
 experienceos search "搜索引擎 inverted index"
-experienceos show exp_01H  # ID 前缀即可定位
 ```
 
-### 导入 GitHub 经历
-
-公开仓库可以显式指定贡献者，无需 token：
+### 2) 接上真实模型（可选）
 
 ```bash
-experienceos import github:owner/repo --author username
+experienceos config set ai.model glm-4.7      # GLM / DeepSeek / OpenAI / Ollama 均可
+experienceos ai check                          # 结构化输出连通性自检
 ```
 
-省略 `--author` 时，通过 `GITHUB_TOKEN` 获取当前认证用户；token 只从环境
-变量读取，不写入配置或经历文件：
+## 导入：把碎片变成草稿
+
+所有导入器只产 `status=draft` 草稿，预览确认后才入库；`source` 字段
+如实记录来源。
+
+| 来源 | 命令 | 说明 |
+| --- | --- | --- |
+| GitHub | `experienceos import github:owner/repo --author username` | 公开仓库无需 token；私有活动用 `GITHUB_TOKEN`（只读环境变量） |
+| 本地 Git 仓库 | `experienceos import /path/to/repo` | 只读 `git log` 分析：时间窗、语言构成、贡献摘要 |
+| 普通文件夹 | `experienceos import /path/to/folder` | 无版本控制的项目包；没有可信时间线就诚实留白 |
+| 旧简历 | `experienceos import resume:cv.md` | 纯规则解析（不用 LLM），原句不改写，原文挂为证据 |
+
+## AI 证据简报工作流
+
+`experienceos ai brief "…"` 是这个项目的核心创新：**模型不允许凭空作答**。
+
+- 模型必须先通过三个只读工具检查本地档案——`search_experiences` →
+  `get_experience` → `get_evidence_stats`；
+- 简报中的每一条**引用必须对应本次运行中实际读取到的证据位置**，
+  引用不接地（grounding failure）会被判暂停而不是输出幻觉；
+- 每一轮对话都持久化为**原子检查点**，模型中断/网络失败后从保存的进度
+  精确恢复；
+- 运行报告默认**脱敏**：只有延迟、token、重试等运营指标，绝无 prompt
+  与个人内容。
+
+**可检验的 AI 质量**——不靠感觉，靠评测集：
 
 ```bash
-export GITHUB_TOKEN=...  # PowerShell: $env:GITHUB_TOKEN="..."
-experienceos import github:owner/repo
+$ experienceos ai eval
+Evaluation (recorded): 9/9 expectations passed (100%)
+tool sequence 100% · schema 100% · grounding 100% · completion 100% · recovery 100%
 ```
 
-导入结果始终为 `status=draft`，预览确认后才保存。GitHub 功能使用独立
-`[github]` extra，不增加核心安装的运行时依赖。
+9 条带标签的评测用例断言工具调用序列、schema 合法性、引用接地和错误恢复；
+`--live` 可用真实模型跑同一数据集。数据集附 sha256 manifest，并明确声明
+这些数字**不**可用于模型准确率宣传。
 
-### 导入本地 Git 仓库
+![工作台的运行记录时间线：检索 → 逐条读取 → 证据统计 → 校验通过](docs/assets/workbench-timeline.png)
 
-对本地 checkout 做一次只读分析（不联网、不写入仓库），得到时间窗、
-语言构成与提交行为摘要：
-
-```bash
-experienceos import /path/to/repo                  # 作者默认取 git config user.email
-experienceos import /path/to/repo --author me@example.com
-```
-
-evidence 挂仓库本地路径；若 `origin` 指向 GitHub 会自动附上仓库 URL。
-分析只用 `git log` / `git ls-files`，语言按扩展名内置映射统计。
-
-### 导入普通项目文件夹
-
-没有版本控制的目录（解压的代码包、课程作业文件夹）也能导入：
-
-```bash
-experienceos import /path/to/project-folder
-```
-
-title 取目录名，description 是 README 原文摘录，语言按扩展名统计；
-没有版本历史就没有可信的时间线，period 保留显式的 undated 占位，
-contribution 保持为空——文件清单证明不了任何人的贡献，这些留给你
-在预览确认时补全。
-
-### 导入旧简历
-
-把 Markdown / 纯文本简历按规则解析成若干经历草稿（纯规则，不用 LLM）：
-
-```bash
-experienceos import resume:cv.md
-experienceos import resume:cv.txt
-```
-
-识别「项目经历 / 工作经历 / 实习经历 / Projects / Experience」等常见
-小节，每个条目生成一份草稿：title、period（支持 `2021.06`、`2021年6月`、
-`至今/present` 等写法）、technology（内置技术词表 + 行内代码启发式），
-description 保留原句不改写；原文路径写入 `source.ref` 并挂为 `file`
-证据。PDF 简历依赖 AI 提取（`[pdf]` extra），走同一条
-「AI 提案 → 人工确认」管线。
-
-## AI 智能（M2）
-
-先配置一个 OpenAI 兼容端点（GLM / DeepSeek / OpenAI / 本地 Ollama），
-API key 只从环境变量读取：
-
-```bash
-experienceos config set ai.model glm-4.7
-experienceos ai check        # 连通性自检，报告模型名与耗时
-```
-
-三个 AI 命令都遵循「AI 只提案，人来决定」：
-
-```bash
-experienceos interview       # STAR 采访 → 草稿，逐字段（含 evidence）确认才落盘（--no-ai 纯向导）
-experienceos enrich <id>     # 表达改进提案，逐条 y/n（越界提案直接丢弃）
-experienceos lint            # 无证据的量化断言清单，可接入 CI（退出码 1）
-```
-
-## 平台（M4）
+## 平台与导出
 
 ```bash
 experienceos sync --init      # home 目录 git 化（--push origin 推送，注意私有仓库）
 experienceos backup           # 全量打包成 zip（含 config）
 experienceos index rebuild    # 可选 FTS 索引（大库加速，可随时删除重建）
-pip install 'experienceos[api]' && experienceos-serve   # 本地 REST API
 experienceos plugins list     # entry-points 插件（第三方 connector/exporter）
+pip install 'experienceos[api]' && experienceos-serve   # 本地 REST API（只读）
 ```
-
-## 导出（M3）
 
 导出物永远是经历的忠实投影，默认只导出 `active` 记录（draft 不外泄）：
 
@@ -144,6 +126,46 @@ experienceos export json-resume                 # jsonresume.org 兼容格式
 experienceos profile                            # 技能时间线 / 共现 Top-N / 覆盖趋势
 experienceos stats --json                       # 机器可读统计
 ```
+
+## 架构
+
+```mermaid
+flowchart TB
+    subgraph composition["组合根（不受分层限制）"]
+        CLI["cli (typer)"]
+        API["api (FastAPI, 只读)"]
+        WEB["web (stdlib http.server, loopback)"]
+    end
+    subgraph intelligence["ai 层"]
+        WF["evidence-brief workflow<br/>检查点 + 引用接地校验"]
+        TOOLS["只读工具注册表"]
+        EVAL["评测集 + 回放 harness"]
+        PROVIDER["provider 协议<br/>openai-compat / responses"]
+    end
+    SERVICES["services 用例层"]
+    subgraph data["数据层"]
+        CONN["connectors<br/>github / git / folder / resume"]
+        EXP["exporters<br/>markdown / json-resume"]
+        STORE["storage<br/>JSON source of truth + FTS5 索引"]
+    end
+    CORE["core 领域模型<br/>Experience / Evidence / ULID / 错误体系"]
+
+    CLI --> SERVICES
+    API --> SERVICES
+    WEB --> WF
+    WF --> TOOLS --> STORE
+    WF --> PROVIDER
+    EVAL --> WF
+    SERVICES --> CONN
+    SERVICES --> EXP
+    SERVICES --> STORE
+    CONN --> CORE
+    EXP --> CORE
+    STORE --> CORE
+```
+
+分层由 **AST 守卫测试**强制执行（`tests/test_layering.py`）：core 不依赖
+任何上层；ai 永远不碰 connectors；services 编排一切；cli/api/web 是组合根。
 
 ## Experience 数据模型
 
@@ -177,6 +199,15 @@ experienceos stats --json                       # 机器可读统计
 
 完整字段说明见 `docs/ARCHITECTURE.md`。
 
+## 工程质量
+
+- **405 个测试全绿**：领域、存储（含 FTS 与迁移）、连接器、AI 工作流与
+  评测、web 服务端到端；
+- **CI 矩阵**：Ubuntu + Windows × Python 3.10/3.12/3.13，外加 wheel 打包
+  在仓库外安装验证（`ai eval` 从安装产物内运行）；
+- **AST 分层守卫**：依赖方向由测试而非约定保证；
+- **AI 评测集**：确定性回归 + 可选真模型评测，报告默认脱敏。
+
 ## 路线图
 
 | Milestone | 主题 | 版本 | 状态 |
@@ -187,6 +218,7 @@ experienceos stats --json                       # 机器可读统计
 | M3 | 输出：Markdown 档案 / JSON Resume 导出 | 0.4.0 | ✅ |
 | M4 | 平台：API 服务、插件系统、FTS 索引 | 0.5.0 | ✅ |
 | M5 | 加固：项目文件夹导入、分层守卫、查询语义统一 | 0.6.0 | ✅ |
+| M6 | 工作台：证据简报工作流、评测集、本地浏览器工作台 | 0.7.0 | ✅ |
 
 第一阶段的目标用户是开发者（应届程序员、软件工程师、AI 工程师、开源
 贡献者）；Experience 抽象刻意保持职业中立，未来可扩展到**设计师**、
@@ -198,14 +230,18 @@ experienceos stats --json                       # 机器可读统计
 
 ```
 src/experienceos/
-  core/        # 领域模型：Experience / ExperienceDraft / Evidence / Source + ULID + 错误体系
-  storage/     # 文件存储层（原子写、损坏容忍）+ 内存查询引擎 + FTS 索引
+  core/        # 领域模型：Experience / Evidence / Source + ULID + 错误体系
+  storage/     # 文件存储层（原子写、损坏容忍、stat 缓存）+ 查询引擎 + FTS 索引
   connectors/  # GitHub / 本地 Git / 项目文件夹 / 简历等导入器
-  ai/          # LLM Provider 协议 + 物料提取管线 + 版本化 Prompt 模板
+  ai/          # 证据简报工作流 + 只读工具 + 评测 harness + Provider + 版本化 Prompt
   services/    # 用例层：CLI 与 API 复用的查询 / 导入 / 统计逻辑
   exporters/   # Markdown / JSON Resume 导出
+  web/         # 本地浏览器工作台（零依赖 http.server + 静态前端）
+  api/         # FastAPI 只读 REST API
   cli/         # typer 命令行界面
   config.py    # home 目录与 config.toml
+evals/         # 9 条带标签的 AI 评测用例 + sha256 manifest
+examples/      # 可运行的离线 agent 演示脚本
 ```
 
 ## 参与贡献
