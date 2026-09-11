@@ -6,8 +6,8 @@
 ## 开发环境
 
 ```bash
-git clone https://github.com/experienceos/experienceos.git
-cd experienceos
+git clone https://github.com/guomengjia618-dot/ExperienceOS.git
+cd ExperienceOS
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev,ai,github]"
 ```
