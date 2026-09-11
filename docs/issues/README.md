@@ -19,4 +19,8 @@
 | M3 输出 | [m3-output.md](m3-output.md) | ✅ 全部完成（v0.4.0） |
 | M4 平台 | [m4-platform.md](m4-platform.md) | ✅ 全部完成（v0.5.0） |
 | M5 加固 | [m5-hardening.md](m5-hardening.md) | ✅ 全部完成（v0.6.0） |
+| M6 工作台 | [m6-workbench.md](m6-workbench.md) | ✅ 全部完成（v0.7.0 待发布） |
 | Backlog | 见 [../ROADMAP.md](../ROADMAP.md#backlog暂不排期) | 不排期 |
+
+> 编号说明：#023–#026 曾预留给一次未落地的重构方案，编号作废保留；
+> 实际交付从 #027（M5）与 #032（M6）续起。

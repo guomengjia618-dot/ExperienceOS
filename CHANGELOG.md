@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Evidence-brief workflow (#032): a checkpointed model/tool loop — the model
+  must *read* records through three read-only tools before making claims;
+  citations are validated against evidence loaded during the run; every
+  round persists an atomic checkpoint so a paused run resumes exactly where
+  it stopped. Provider-neutral (OpenAI-compatible chat and the Responses API
+  ship with the box), with sanitized run reports (operational metrics only,
+  never prompts) and request metrics with optional per-model cost rates.
+- Evaluation harness (#032): `experienceos ai eval` replays a 9-case
+  labelled dataset (tool-sequence, schema-validity, citation-grounding and
+  expected-content assertions over deterministic recorded turns), writes
+  redacted shareable reports, and supports `--live` for real-model runs on
+  the same cases. Dataset ships with a signed-sha256 manifest that states
+  what the numbers are *not* valid for.
+- Local workbench (#033): `experienceos web` serves a zero-dependency
+  loopback-only browser UI for browsing experiences, running the brief
+  workflow (offline demo mode with synthetic data, or a configured live
+  model), inspecting tool-call timelines, and resuming paused runs.
+  Hardened by default: Host/Origin/Sec-Fetch-Site checks, strict CSP,
+  no request logging, errors kept off the wire.
+- Workbench run-history dropdown (#034): replaced the bare `<select>` with
+  a custom listbox showing each run's question, status dot (running/
+  paused/completed), mode and relative time; keyboard-navigable with
+  outside-click/Escape dismissal.
+
+### Changed
+
+- `AIProviderError` now carries sanitized request `metadata`; the AI
+  config gained explicit retry-budget and cost-rate fields
+  (`ai.timeout_seconds` replaces `ai.timeout`). The layering guard now
+  allows ai's read-only tool seam to import storage (downward, acyclic).
+
 ## [0.6.0] - 2026-08-30
 
 Architecture-hardening release: a full-codebase review whose findings were
@@ -70,6 +103,9 @@ fixed structurally (no special-case patches). Details in
   text queries use it only above the record threshold; files stay the
   source of truth. Benchmark script included.
 
+## [0.4.0] - 2026-08-29
+
+Output milestone (M3): faithful projections of confirmed records.
 
 ### Added
 
@@ -87,10 +123,17 @@ fixed structurally (no special-case patches). Details in
   co-occurrence Top-N, per-year evidence coverage) and machine-readable
   `stats --json`, backed by a shared pure-function stats module.
 
+## [0.3.0] - 2026-08-29
+
+Intelligence milestone (M2): provider wiring and AI-assisted drafting.
 
 ### Added
 
 - LLM provider wiring (#010): `OpenAICompatibleProvider` completes the M0 skeleton — configurable timeout (`ai.timeout`), exactly one retry for network-class errors, and 429/5xx responses surfaced as `AIProviderError` with a response-body summary. New `experienceos config get/set/list` subcommands edit config.toml (secrets stay in env vars), `experienceos ai check` verifies the endpoint end to end (`--mock` targets the scripted provider), and `MockProvider` moves into the core `ai` package for tests and `--dry-run` modes.
+
+## [0.2.0] - 2026-08-29
+
+Import milestone (M1): every connector produces drafts only, with provenance.
 
 ### Added
 
