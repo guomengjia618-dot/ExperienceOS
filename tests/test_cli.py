@@ -309,11 +309,11 @@ def test_config_set_then_get_roundtrip(cli_env: Any) -> None:
 
 
 def test_config_set_timeout_accepts_numbers_only(cli_env: Any) -> None:
-    ok = runner.invoke(app, ["config", "set", "ai.timeout", "45"])
+    ok = runner.invoke(app, ["config", "set", "ai.timeout_seconds", "45"])
     assert ok.exit_code == 0, full_output(ok)
-    bad = runner.invoke(app, ["config", "set", "ai.timeout", "soon"])
+    bad = runner.invoke(app, ["config", "set", "ai.timeout_seconds", "soon"])
     assert bad.exit_code == 1
-    assert "number of seconds" in full_output(bad)
+    assert "expects a number" in full_output(bad)
 
 
 def test_config_set_rejects_unknown_key(cli_env: Any) -> None:
@@ -325,15 +325,21 @@ def test_config_set_rejects_unknown_key(cli_env: Any) -> None:
 def test_config_list_shows_all_keys(cli_env: Any) -> None:
     result = runner.invoke(app, ["config", "list"])
     assert result.exit_code == 0, full_output(result)
-    for key in ("ai.provider", "ai.base_url", "ai.model", "ai.api_key_env", "ai.timeout"):
+    for key in (
+        "ai.provider",
+        "ai.base_url",
+        "ai.model",
+        "ai.api_key_env",
+        "ai.timeout_seconds",
+    ):
         assert key in result.output
 
 
 def test_ai_check_with_mock_provider(cli_env: Any) -> None:
     result = runner.invoke(app, ["ai", "check", "--mock"])
     assert result.exit_code == 0, full_output(result)
-    assert "provider=mock" in result.output
-    assert "latency=" in result.output
+    assert "Model API connected" in result.output
+    assert "structured output works" in result.output
 
 
 def test_ai_check_reports_missing_key(
@@ -351,14 +357,20 @@ def test_ai_check_against_injected_fake_provider(
 ) -> None:
     import importlib
 
-    from experienceos.ai import MockProvider
+    from experienceos.ai.provider import MockProvider, ModelResponse
 
     # patch via importlib: `import experienceos.cli.app as x` and dotted
     # setattr strings both resolve to the Typer `app` instance because
     # cli/__init__ re-exports `app` over the submodule name
     cli_module = importlib.import_module("experienceos.cli.app")
-    monkeypatch.setattr(cli_module, "build_provider", lambda config: MockProvider("pong"))
+    monkeypatch.setattr(
+        cli_module,
+        "create_provider",
+        lambda config: MockProvider(
+            responses=[ModelResponse(content='{"ok": true, "message": "pong"}')]
+        ),
+    )
     monkeypatch.setenv("OPENAI_API_KEY", "unused-here")
     result = runner.invoke(app, ["ai", "check"])
     assert result.exit_code == 0, full_output(result)
-    assert "'pong'" in result.output
+    assert "pong" in result.output

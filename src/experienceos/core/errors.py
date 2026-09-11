@@ -7,6 +7,8 @@ while programming errors keep raising built-in exceptions.
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class ExperienceOSError(Exception):
     """Base class for all expected ExperienceOS failures."""
@@ -49,7 +51,23 @@ class NotInitializedError(ExperienceOSError):
 
 
 class AIProviderError(ExperienceOSError):
-    """An LLM provider is misconfigured or failed."""
+    """An LLM provider is misconfigured or failed.
+
+    ``metadata`` carries sanitized operational metrics (latency, status
+    code, token counts) — never prompts, responses, or secrets.
+    """
+
+    def __init__(self, message: str, *, metadata: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.metadata = metadata or {}
+
+
+class ToolExecutionError(ExperienceOSError):
+    """A model-requested tool is unknown, invalid, or failed."""
+
+
+class WorkflowError(ExperienceOSError):
+    """A recoverable AI workflow paused or exceeded its safety limits."""
 
 
 class ExportError(ExperienceOSError):

@@ -26,7 +26,6 @@ from experienceos.core.errors import ValidationError
 
 ENV_HOME = "EXPERIENCEOS_HOME"
 CONFIG_FILENAME = "config.toml"
-DEFAULT_AI_TIMEOUT = 60.0
 
 
 @dataclass
@@ -37,7 +36,37 @@ class AIConfig:
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-4o-mini"
     api_key_env: str = "OPENAI_API_KEY"
-    timeout: float = DEFAULT_AI_TIMEOUT
+    timeout_seconds: float = 60.0
+    max_retries: int = 3
+    retry_base_seconds: float = 0.5
+    retry_max_seconds: float = 8.0
+    retry_jitter_seconds: float = 0.25
+    retry_time_budget_seconds: float = 30.0
+    input_cost_per_million_usd: float = 0.0
+    output_cost_per_million_usd: float = 0.0
+
+    def __post_init__(self) -> None:
+        self.timeout_seconds = float(self.timeout_seconds)
+        self.max_retries = int(self.max_retries)
+        self.retry_base_seconds = float(self.retry_base_seconds)
+        self.retry_max_seconds = float(self.retry_max_seconds)
+        self.retry_jitter_seconds = float(self.retry_jitter_seconds)
+        self.retry_time_budget_seconds = float(self.retry_time_budget_seconds)
+        self.input_cost_per_million_usd = float(self.input_cost_per_million_usd)
+        self.output_cost_per_million_usd = float(self.output_cost_per_million_usd)
+        if self.timeout_seconds <= 0:
+            raise ValueError("ai.timeout_seconds must be positive")
+        if self.max_retries < 0:
+            raise ValueError("ai.max_retries must not be negative")
+        if min(
+            self.retry_base_seconds,
+            self.retry_max_seconds,
+            self.retry_jitter_seconds,
+            self.retry_time_budget_seconds,
+            self.input_cost_per_million_usd,
+            self.output_cost_per_million_usd,
+        ) < 0:
+            raise ValueError("AI retry and cost settings must not be negative")
 
 
 @dataclass
@@ -69,25 +98,13 @@ def load_config(home: Path) -> AppConfig:
     ai_kwargs = {
         f.name: ai_data[f.name] for f in fields(AIConfig) if f.name in ai_data
     }
-    config = AppConfig(
-        schema_version=int(data.get("schema_version", 1)),
-        ai=AIConfig(**ai_kwargs),
-    )
-    config.ai.timeout = _coerce_timeout(config.ai.timeout)
-    return config
-
-
-def _coerce_timeout(value: Any) -> float:
-    """Accept hand-edited numeric strings ("30") for the timeout field."""
     try:
-        timeout = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValidationError(
-            f"config [ai] timeout must be a number of seconds, got {value!r}"
-        ) from exc
-    if timeout <= 0:
-        raise ValidationError(f"config [ai] timeout must be positive, got {timeout}")
-    return timeout
+        return AppConfig(
+            schema_version=int(data.get("schema_version", 1)),
+            ai=AIConfig(**ai_kwargs),
+        )
+    except ValueError as exc:
+        raise ValidationError(f"invalid [ai] configuration: {exc}") from exc
 
 
 def _format_toml_value(value: Any) -> str:

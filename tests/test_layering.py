@@ -7,7 +7,8 @@ tier reaches where it must not:
 
 - core imports nothing above itself;
 - ai never imports connectors (the injection protocols point the other
-  way);
+  way); it may read storage only through its read-only tool seam
+  (tools/evaluation/demo) — a downward dependency, never a cycle;
 - connectors never import ai (AI help arrives via injected protocols);
 - storage and exporters depend on core only (services may orchestrate
   all of them; cli/api are composition roots and unrestricted).
@@ -28,7 +29,7 @@ _FORBIDDEN: dict[str, tuple[str, ...]] = {
     ),
     "storage": ("connectors", "ai", "exporters", "services", "cli", "api", "plugins", "stats"),
     "connectors": ("ai", "storage", "exporters", "services", "cli", "api", "plugins", "stats"),
-    "ai": ("connectors", "storage", "exporters", "services", "cli", "api", "plugins", "stats"),
+    "ai": ("connectors", "exporters", "services", "cli", "api", "plugins", "stats"),
     "exporters": ("connectors", "ai", "storage", "services", "cli", "api", "plugins", "stats"),
     "stats": ("storage", "connectors", "ai", "exporters", "services", "cli", "api", "plugins"),
 }

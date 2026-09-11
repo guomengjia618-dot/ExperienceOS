@@ -1,0 +1,23 @@
+{
+  "manifest_version": 1,
+  "dataset": "experience_brief.jsonl",
+  "dataset_sha256": "38d445c8ab1d4c87610e98f37c508ec5010e0123dd7f30a1502e0a72659630ae",
+  "case_count": 9,
+  "created_on": "2026-08-28",
+  "data_origin": "ai-assisted-synthetic",
+  "label_review": "not-independently-human-reviewed",
+  "contains_real_user_data": false,
+  "contains_personal_data": false,
+  "uses_external_source_records": false,
+  "evidence_locations": "placeholder-only",
+  "intended_use": [
+    "deterministic workflow regression",
+    "live-model smoke evaluation"
+  ],
+  "not_valid_for": [
+    "model accuracy claims",
+    "representative user-task claims",
+    "production performance claims"
+  ],
+  "license": "MIT repository test fixture"
+}

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ExperienceOS 本地经历工作台">
+  <title>ExperienceOS</title>
+  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+</head>
+<body>
+  <svg class="icon-sprite" aria-hidden="true">
+    <defs>
+      <symbol id="icon-archive" viewBox="0 0 24 24"><path d="M4 7.5h16v12H4zM3 4.5h18v3H3zM9 12h6"/></symbol>
+      <symbol id="icon-file" viewBox="0 0 24 24"><path d="M6 3.5h8l4 4v13H6zM14 3.5v4h4M9 12h6M9 16h4"/></symbol>
+      <symbol id="icon-link" viewBox="0 0 24 24"><path d="M9.5 14.5l5-5M7.7 17.7l-1.4 1.4a3.5 3.5 0 01-5-5l4-4a3.5 3.5 0 015 0M16.3 6.3l1.4-1.4a3.5 3.5 0 015 5l-4 4a3.5 3.5 0 01-5 0"/></symbol>
+      <symbol id="icon-history" viewBox="0 0 24 24"><path d="M4 7v5h5M5 16a8 8 0 101-9M12 8v5l3 2"/></symbol>
+      <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></symbol>
+      <symbol id="icon-terminal" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM7 9l3 3-3 3M12 15h5"/></symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l2.5 2.5L16 9"/></symbol>
+      <symbol id="icon-alert" viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 9v5M12 17.5v.1"/></symbol>
+      <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"/></symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></symbol>
+      <symbol id="icon-cloud" viewBox="0 0 24 24"><path d="M7 18h11a4 4 0 000-8h-.6A6 6 0 006 9a4.5 4.5 0 001 9z"/></symbol>
+      <symbol id="icon-box" viewBox="0 0 24 24"><path d="M4 7l8-4 8 4-8 4zM4 7v10l8 4 8-4V7M12 11v10"/></symbol>
+      <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.1"/></symbol>
+      <symbol id="icon-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+    </defs>
+  </svg>
+  <div class="workspace">
+    <aside class="library" aria-labelledby="library-title">
+      <a class="brand" href="/"><svg class="icon" aria-hidden="true"><use href="#icon-archive"></use></svg><span>ExperienceOS</span></a>
+      <div class="section-head library-heading"><h2 id="library-title"><svg class="icon" aria-hidden="true"><use href="#icon-file"></use></svg>经历</h2><span id="record-count" class="count">—</span></div>
+      <div id="records" class="records"></div>
+      <div class="history"><div class="section-head history-heading"><label id="history-label"><svg class="icon" aria-hidden="true"><use href="#icon-history"></use></svg>最近</label><span id="history-count" class="count">—</span></div><div class="history-select"><button type="button" id="history-toggle" class="history-toggle" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="history-label history-toggle-label"><span id="history-toggle-label" class="history-toggle-label placeholder">选择运行记录</span><svg class="icon chevron" aria-hidden="true"><use href="#icon-chevron"></use></svg></button><div id="history-list" class="history-list" role="listbox" aria-label="运行记录" hidden></div></div></div>
+    </aside>
+    <main>
+      <header class="workspace-header"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg><h1>经历分析</h1></header>
+      <div class="conversation-scroll">
+        <div class="conversation">
+          <section class="result-section" aria-labelledby="result-title">
+            <div class="section-head result-heading"><h2 id="result-title">结果</h2><span id="result-status" class="muted">就绪</span></div>
+            <div id="result" class="result"><div class="empty-result"><svg class="empty-icon" aria-hidden="true"><use href="#icon-search"></use></svg><p>输入问题，开始分析</p></div></div>
+          </section>
+          <details class="activity-panel" id="activity" hidden>
+            <summary><span><svg class="icon" aria-hidden="true"><use href="#icon-terminal"></use></svg>运行记录</span><span id="run-status" role="status" class="status-badge">未运行</span></summary>
+            <div class="run-panel">
+              <ol id="events" class="events"><li class="pending-event">等待任务开始</li></ol>
+              <div id="recovery" class="recovery" hidden><p id="recovery-message"></p><button id="resume" class="secondary">继续运行</button></div>
+              <div id="metrics" class="metrics" hidden></div><p id="run-id" class="run-id"></p>
+              <span class="boundary-note" title="引用校验仅检查记录 ID 和来源地址" aria-label="引用校验说明"><svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg></span>
+            </div>
+          </details>
+        </div>
+      </div>
+      <div class="composer-area">
+        <p id="error" role="alert" class="error-banner" hidden></p>
+        <section class="composer" aria-label="新分析">
+          <form id="task-form">
+            <label class="sr-only" for="question">分析问题</label>
+            <textarea id="question" maxlength="4000" rows="2" readonly placeholder="询问你的项目、成果或证据…">整理示例经历中的成果、证据与缺口</textarea>
+            <div class="composer-footer">
+              <div class="mode-control" aria-label="运行模式"><button type="button" id="mode-demo" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="#icon-box"></use></svg>演示</button><button type="button" id="mode-live" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#icon-cloud"></use></svg>在线</button></div>
+              <span id="model-label" class="muted" hidden></span><button id="start" class="primary" type="submit">运行<svg class="icon" aria-hidden="true"><use href="#icon-play"></use></svg></button>
+            </div>
+          </form>
+        </section>
+        <div class="composer-options"><p id="mode-note" class="mode-note">示例数据</p><label id="failure-option" class="checkbox-label"><input id="simulate-failure" type="checkbox"> 中断演示</label></div>
+      </div>
+    </main>
+  </div>
+  <dialog id="record-dialog" aria-labelledby="detail-title"><div class="dialog-head"><span><svg class="icon" aria-hidden="true"><use href="#icon-file"></use></svg>经历</span><button id="close-detail" class="icon-button" aria-label="关闭经历详情"><svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg></button></div><div id="record-detail"></div></dialog>
+</body>
+</html>

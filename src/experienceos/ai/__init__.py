@@ -1,13 +1,12 @@
-"""AI layer: provider abstraction and prompt templates.
+"""AI layer: providers, tools, structured outputs, and durable workflows.
 
-M0 shipped the contracts (protocol + prompts); #010 wires providers:
-configurable OpenAI-compatible endpoints with retry/timeout semantics,
-a scripted MockProvider for tests and ``--dry-run`` modes, and the
-``experienceos config`` / ``experienceos ai check`` commands. The
-interactive ``interview`` and ``enrich`` commands land with #011/#012 —
-see docs/issues/m2-intelligence.md.
+M0 shipped the contracts; #010 wired OpenAI-compatible endpoints; the
+checkpointed evidence-brief workflow, its read-only tool registry, the
+evaluation harness, and the provider factory make the layer a testable
+system — "AI propose, human decide" throughout.
 """
 
+from experienceos.ai.factory import create_provider
 from experienceos.ai.mock import MockProvider
 from experienceos.ai.prompts import (
     ALL_PROMPTS,
@@ -18,18 +17,36 @@ from experienceos.ai.prompts import (
 from experienceos.ai.provider import (
     LLMProvider,
     Message,
+    ModelResponse,
     OpenAICompatibleProvider,
+    ToolCall,
     build_provider,
+    complete_structured,
 )
+from experienceos.ai.responses import OpenAIResponsesProvider
+from experienceos.ai.schemas import BriefCitation, EvidenceBrief, ProviderHealth
+from experienceos.ai.tools import ExperienceToolRegistry
+from experienceos.ai.workflow import EvidenceBriefWorkflow, WorkflowCheckpointStore
 
 __all__ = [
     "ALL_PROMPTS",
     "EXTRACTION_PROMPT_V1",
     "INTAKE_INTERVIEW_PROMPT_V1",
+    "BriefCitation",
+    "EvidenceBrief",
+    "EvidenceBriefWorkflow",
+    "ExperienceToolRegistry",
     "LLMProvider",
     "Message",
     "MockProvider",
+    "ModelResponse",
     "OpenAICompatibleProvider",
+    "OpenAIResponsesProvider",
+    "ProviderHealth",
+    "ToolCall",
+    "WorkflowCheckpointStore",
     "build_provider",
+    "complete_structured",
+    "create_provider",
     "render_prompt",
 ]

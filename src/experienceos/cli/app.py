@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 """ExperienceOS command line interface.
 
 Commands cover the full local loop: initialize a home, record or import
@@ -12,10 +13,11 @@ import json
 import os
 import shlex
 import subprocess
+import tempfile
 import time
 from collections import Counter
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,19 +27,38 @@ from rich.console import Console
 from rich.markup import escape
 
 from experienceos import __version__
+from experienceos.ai.demo import build_recorded_demo_provider
 from experienceos.ai.enrich import (
     apply_proposal,
     build_enrich_messages,
     normalize_proposals,
     parse_proposals,
 )
+from experienceos.ai.evaluation import run_evaluation, save_evaluation_report
 from experienceos.ai.extraction import AIExtraction, collect_evidence_candidates
+from experienceos.ai.factory import create_provider
 from experienceos.ai.interview import (
     interview_system_prompt,
     save_transcript,
 )
-from experienceos.ai.mock import MockProvider
-from experienceos.ai.provider import Message, build_provider
+from experienceos.ai.provider import (
+    LLMProvider,
+    Message,
+    ModelResponse,
+    build_provider,
+    complete_structured,
+)
+from experienceos.ai.provider import (
+    MockProvider as ScriptedProvider,
+)
+from experienceos.ai.reporting import build_run_report, save_run_report
+from experienceos.ai.schemas import ProviderHealth
+from experienceos.ai.tools import ExperienceToolRegistry
+from experienceos.ai.workflow import (
+    EvidenceBriefWorkflow,
+    WorkflowCheckpointStore,
+    WorkflowError,
+)
 from experienceos.cli import render
 from experienceos.config import load_config, resolve_home, save_config
 from experienceos.connectors import ExperienceDraft, default_registry
@@ -57,6 +78,7 @@ from experienceos.core.models import (
 )
 from experienceos.exporters import ExportOptions, default_exporter_registry
 from experienceos.plugins import load_plugins, plugin_summary
+from experienceos.presentation import tool_label
 from experienceos.services import experiences as services
 from experienceos.services import ingest as ingest_services
 from experienceos.services.homeops import backup_home, git_sync
@@ -76,6 +98,16 @@ app = typer.Typer(
 )
 console = Console()
 err_console = Console(stderr=True)
+
+_REPOSITORY_EVAL_DATASET = (
+    Path(__file__).resolve().parents[3] / "evals" / "experience_brief.jsonl"
+)
+_PACKAGED_EVAL_DATASET = Path(__file__).resolve().parents[1] / "ai" / "eval_cases.jsonl"
+_DEFAULT_EVAL_DATASET = (
+    _REPOSITORY_EVAL_DATASET
+    if _REPOSITORY_EVAL_DATASET.is_file()
+    else _PACKAGED_EVAL_DATASET
+)
 
 _LIST_FIELDS = {"technology", "tags", "contribution", "challenge", "solution", "result"}
 _SET_TARGETS = {
@@ -124,6 +156,40 @@ def _get_store(ctx: typer.Context) -> ExperienceStore:
             "(or set EXPERIENCEOS_HOME)."
         )
     return ExperienceStore(home)
+
+
+def _configured_provider(ctx: typer.Context) -> LLMProvider:
+    home = resolve_home(ctx.obj)
+    return create_provider(load_config(home).ai)
+
+
+def _render_workflow_state(
+    state: Any,
+    checkpoints: WorkflowCheckpointStore,
+    report_path: Path,
+) -> None:
+    status_text = {
+        "completed": "已完成",
+        "paused": "已暂停",
+        "running": "运行中",
+    }.get(state.status, state.status)
+    console.print(f"[green]工作流{status_text}[/green]：{state.workflow_id}")
+    if state.tool_events:
+        tools_text = " → ".join(tool_label(event.name) for event in state.tool_events)
+        console.print("工具流程：" + tools_text)
+    if state.output is not None:
+        render.render_evidence_brief(console, state.output)
+    report = build_run_report(state)
+    if report.model_call_count:
+        console.print(
+            "模型调用："
+            f"{report.model_call_count} · {report.latency_ms or 0:.0f} ms · "
+            f"{report.total_tokens if report.total_tokens is not None else 'Token 数未知'} "
+            f"· 重试 {report.retry_count} 次"
+        )
+    saved_report = save_run_report(state, report_path)
+    console.print(f"[dim]流程存档：{checkpoints.path_of(state.workflow_id)}[/dim]")
+    console.print(f"[dim]脱敏报告：{saved_report}[/dim]")
 
 
 def _load_by_prefix(store: ExperienceStore, prefix: str) -> Experience:
@@ -1126,7 +1192,10 @@ _CONFIG_KEYS: dict[str, str] = {
     "ai.base_url": "OpenAI-compatible API base URL",
     "ai.model": "model name, e.g. glm-4.7 or gpt-4o-mini",
     "ai.api_key_env": "env var holding the API key — never the key itself",
-    "ai.timeout": "request timeout in seconds",
+    "ai.timeout_seconds": "request timeout in seconds",
+    "ai.max_retries": "max retries for retryable failures (timeout/429/5xx)",
+    "ai.input_cost_per_million_usd": "input price per million tokens (cost estimates)",
+    "ai.output_cost_per_million_usd": "output price per million tokens (cost estimates)",
 }
 
 
@@ -1180,13 +1249,20 @@ def config_set(
 
 
 def _coerce_config_value(key: str, value: str) -> Any:
-    if key == "ai.timeout":
+    if key in (
+        "ai.timeout_seconds",
+        "ai.input_cost_per_million_usd",
+        "ai.output_cost_per_million_usd",
+    ):
         try:
             return float(value)
         except ValueError as exc:
-            raise ValidationError(
-                f"{key} expects a number of seconds, got {value!r}"
-            ) from exc
+            raise ValidationError(f"{key} expects a number, got {value!r}") from exc
+    if key == "ai.max_retries":
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise ValidationError(f"{key} expects an integer, got {value!r}") from exc
     return value
 
 
@@ -1195,26 +1271,181 @@ def _coerce_config_value(key: str, value: str) -> Any:
 def ai_check(
     ctx: typer.Context,
     mock: bool = typer.Option(
-        False, "--mock", help="Check the scripted MockProvider instead of the endpoint."
+        False, "--mock", help="Check a scripted provider instead of the real endpoint."
     ),
 ) -> None:
-    """Verify the configured LLM endpoint answers a minimal request.
-
-    Reports model name and round-trip latency. Without a key it names
-    the exact environment variable to set; no key is ever read from or
-    written to disk.
-    """
-    config = load_config(resolve_home(ctx.obj))
-    provider = MockProvider("ok") if mock else build_provider(config.ai)
+    """Call the configured model and validate a tiny structured response."""
+    if mock:
+        provider = ScriptedProvider(
+            responses=[
+                ModelResponse(content='{"ok": true, "message": "structured output works"}')
+            ]
+        )
+    else:
+        provider = _configured_provider(ctx)
     started = time.perf_counter()
-    reply = provider.complete(
-        [Message(role="user", content="Reply with exactly: ok")]
+    health = complete_structured(
+        provider,
+        [
+            Message(
+                role="user",
+                content=(
+                    "This is a connectivity check. Return ok=true and a short message "
+                    "confirming that structured output works."
+                ),
+            )
+        ],
+        ProviderHealth,
+        schema_name="provider_health",
     )
-    elapsed = time.perf_counter() - started
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    metrics = getattr(provider, "last_metrics", None)
     console.print(
-        f"[green]ok[/green] provider={provider.name} model={config.ai.model} "
-        f"reply={reply.strip()[:40]!r} latency={elapsed:.2f}s"
+        f"[green]Model API connected[/green] · "
+        f"{getattr(provider, 'model', provider.name)} · "
+        f"{elapsed_ms:.0f} ms · {health.message}"
     )
+    if metrics is not None:
+        cost = (
+            metrics.estimated_cost_usd
+            if metrics.estimated_cost_usd is not None
+            else "unconfigured"
+        )
+        console.print(
+            f"request_id={metrics.request_id or 'unavailable'} · "
+            f"tokens={metrics.total_tokens if metrics.total_tokens is not None else 'unavailable'} "
+            f"· retries={metrics.retry_count} · "
+            f"estimated_cost_usd={cost}"
+        )
+
+
+@ai_app.command("brief")
+@_friendly_errors
+def ai_brief(
+    ctx: typer.Context,
+    question: str | None = typer.Argument(
+        None,
+        help="Question about the local experience archive.",
+    ),
+    resume: str | None = typer.Option(
+        None,
+        "--resume",
+        help="Resume a paused workflow by its full workflow ID.",
+    ),
+    recorded: bool = typer.Option(
+        False,
+        "--recorded",
+        help="Use deterministic recorded model turns; all tools still execute for real.",
+    ),
+    report_path: Path | None = typer.Option(
+        None,
+        "--report",
+        help="Sanitized JSON report path (default: <home>/reports/<workflow-id>.json).",
+    ),
+) -> None:
+    """Create a grounded, structured brief with tools and durable checkpoints."""
+    store = _get_store(ctx)
+    checkpoints = WorkflowCheckpointStore(store.root)
+    if recorded:
+        provider = build_recorded_demo_provider(store)
+        if resume is not None:
+            previous = checkpoints.load(resume)
+            if any(message.get("tool_calls") for message in previous.messages):
+                provider.responses = provider.responses[-1:]
+    else:
+        provider = _configured_provider(ctx)
+    workflow = EvidenceBriefWorkflow(
+        provider=provider,
+        tools=ExperienceToolRegistry(store),
+        checkpoints=checkpoints,
+    )
+    if resume is not None:
+        state = workflow.resume(resume)
+    else:
+        if question is None or not question.strip():
+            raise WorkflowError("provide a question, or use --resume with a workflow ID")
+        state = workflow.start(question)
+    target_report = report_path or store.root / "reports" / f"{state.workflow_id}.json"
+    _render_workflow_state(state, checkpoints, target_report)
+
+
+@ai_app.command("eval")
+@_friendly_errors
+def ai_eval(
+    ctx: typer.Context,
+    dataset: Path = typer.Option(
+        _DEFAULT_EVAL_DATASET,
+        "--dataset",
+        help="JSONL evaluation dataset.",
+    ),
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Use the configured real model instead of recorded model turns.",
+    ),
+    report_path: Path | None = typer.Option(
+        None,
+        "--report",
+        help="Write the evaluation result as JSON (live runs default under <home>/reports).",
+    ),
+) -> None:
+    """Run tool-use, schema, grounding, and expected-content evaluations."""
+    if not dataset.is_file():
+        raise ValidationError(f"evaluation dataset not found: {dataset}")
+    live_provider = _configured_provider(ctx) if live else None
+    with tempfile.TemporaryDirectory(prefix="experienceos-eval-") as directory:
+        evaluation_report = run_evaluation(
+            dataset,
+            Path(directory),
+            live_provider=live_provider,
+        )
+    mode = "live model" if live else "recorded"
+    console.print(
+        f"[bold]Evaluation ({mode})[/bold]: "
+        f"{evaluation_report.passed}/{evaluation_report.total} "
+        f"expectations passed ({evaluation_report.expectation_pass_rate:.0%})"
+    )
+    console.print(f"[dim]{evaluation_report.interpretation}[/dim]")
+    recovery = (
+        f"{evaluation_report.recovery_pass_rate:.0%}"
+        if evaluation_report.recovery_pass_rate is not None
+        else "n/a"
+    )
+    console.print(
+        f"tool sequence {evaluation_report.tool_sequence_pass_rate:.0%} · "
+        f"schema {evaluation_report.schema_pass_rate:.0%} · "
+        f"grounding {evaluation_report.grounded_citation_pass_rate:.0%} · "
+        f"completion {evaluation_report.task_completion_rate:.0%} · "
+        f"recovery {recovery}"
+    )
+    for case in evaluation_report.cases:
+        mark = "[green]PASS[/green]" if case.passed else "[red]FAIL[/red]"
+        console.print(f"  {mark} {case.id} · tools: {', '.join(case.called_tools) or 'none'}")
+        if case.error and not case.passed:
+            err_console.print(f"    {escape(case.error)}")
+    if report_path is None and live:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        report_path = resolve_home(ctx.obj) / "reports" / f"eval-{timestamp}.json"
+    if report_path is not None:
+        saved = save_evaluation_report(evaluation_report, report_path)
+        console.print(f"[dim]Evaluation report: {saved}[/dim]")
+    if evaluation_report.passed != evaluation_report.total:
+        raise typer.Exit(code=1)
+
+
+@app.command(help="启动本地经历工作台：浏览经历、运行分析和恢复任务。")
+def web(
+    ctx: typer.Context,
+    port: int = typer.Option(8765, min=1, max=65535, help="本地工作台端口。"),
+) -> None:
+    """Serve the local experience workbench (loopback only, zero extra deps)."""
+    from experienceos.web.server import serve
+
+    try:
+        serve(resolve_home(ctx.obj), port)
+    except (OSError, ValueError) as exc:
+        err_console.print(f"[red]工作台启动失败：[/red] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
 
 
 def main() -> None:  # console_script entry point

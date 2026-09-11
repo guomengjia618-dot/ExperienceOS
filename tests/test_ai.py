@@ -1,18 +1,12 @@
-"""AI layer contract tests: prompts, provider protocol and wiring (#010).
-
-Provider behavior is exercised through an injected fake client — no
-network, and no real HTTP traffic ever leaves the test process.
-"""
+"""AI layer contract tests: prompts and provider protocol (no network)."""
 
 from __future__ import annotations
 
 import json
-from typing import Any
 
 import httpx
 import pytest
 
-from experienceos.ai.mock import MockProvider
 from experienceos.ai.prompts import (
     ALL_PROMPTS,
     EVIDENCE_GUARDRAIL_NOTE,
@@ -21,52 +15,32 @@ from experienceos.ai.prompts import (
 from experienceos.ai.provider import (
     LLMProvider,
     Message,
+    MockProvider,
+    ModelResponse,
     OpenAICompatibleProvider,
-    build_provider,
+    complete_structured,
 )
+from experienceos.ai.responses import OpenAIResponsesProvider
+from experienceos.ai.schemas import ProviderHealth
 from experienceos.config import AIConfig
 from experienceos.core.errors import AIProviderError
 
 
-class FakeResponse:
-    def __init__(self, status_code: int = 200, payload: Any = None) -> None:
-        if payload is None:
-            payload = {"choices": [{"message": {"content": "ok"}}]}
+class _FakeHTTPResponse:
+    def __init__(
+        self,
+        status_code: int,
+        data: dict,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.status_code = status_code
-        self._payload = payload
-        self.text = json.dumps(payload)
+        self._data = data
+        self.headers = headers or {}
+        self.text = json.dumps(data)
 
-    def json(self) -> Any:
-        return self._payload
-
-
-class FakeClient:
-    """Records .post calls; replays scripted outcomes in order."""
-
-    def __init__(self, *outcomes: FakeResponse | Exception) -> None:
-        self._outcomes = list(outcomes)
-        self.calls: list[dict[str, Any]] = []
-
-    def post(self, url: str, headers=None, json=None, timeout=None) -> FakeResponse:
-        self.calls.append(
-            {"url": url, "headers": headers, "json": json, "timeout": timeout}
-        )
-        outcome = self._outcomes.pop(0)
-        if isinstance(outcome, Exception):
-            raise outcome
-        return outcome
-
-    @property
-    def call_count(self) -> int:
-        return len(self.calls)
-
-
-def _provider(client: FakeClient, **config_kwargs: Any) -> OpenAICompatibleProvider:
-    return OpenAICompatibleProvider(AIConfig(**config_kwargs), client=client)
-
-
-def _messages() -> list[Message]:
-    return [Message(role="user", content="hello")]
+    def json(self) -> dict:
+        return self._data
 
 
 class TestPrompts:
@@ -99,127 +73,311 @@ class TestProviderProtocol:
         provider = OpenAICompatibleProvider(AIConfig())
         assert isinstance(provider, LLMProvider)
 
+    def test_responses_adapter_satisfies_protocol(self) -> None:
+        provider = OpenAIResponsesProvider(AIConfig(provider="openai-responses"))
+        assert isinstance(provider, LLMProvider)
+
     def test_message_is_simple_data(self) -> None:
         message = Message(role="user", content="hello")
         assert message.role == "user"
 
+    def test_provider_sends_strict_schema_and_tools(self, monkeypatch) -> None:
+        provider = OpenAICompatibleProvider(AIConfig(model="test-model"))
+        captured = {}
 
-class TestOpenAICompatibleProvider:
-    @pytest.fixture(autouse=True)
-    def _api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        def fake_post(payload):
+            captured.update(payload)
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "lookup",
+                                        "arguments": '{"query": "x"}',
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ]
+            }
 
-    def test_success_returns_message_content(self) -> None:
-        client = FakeClient(FakeResponse())
-        reply = _provider(client).complete(_messages())
-        assert reply == "ok"
-        assert client.call_count == 1
-        request = client.calls[0]
-        assert request["json"]["messages"] == [{"role": "user", "content": "hello"}]
-        assert request["headers"]["Authorization"].startswith("Bearer ")
-
-    def test_configured_timeout_is_passed_to_transport(self) -> None:
-        client = FakeClient(FakeResponse())
-        _provider(client, timeout=7.5).complete(_messages())
-        assert client.calls[0]["timeout"] == 7.5
-
-    def test_url_uses_configured_base_url(self) -> None:
-        client = FakeClient(FakeResponse())
-        _provider(client, base_url="https://open.bigmodel.cn/api/paas/v4/").complete(
-            _messages()
+        monkeypatch.setattr(provider, "_post", fake_post)
+        response = provider.generate(
+            [Message(role="user", content="hello")],
+            response_schema=ProviderHealth.model_json_schema(),
+            schema_name="provider_health",
+            tools=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
         )
-        assert client.calls[0]["url"] == (
-            "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-        )
 
-    def test_network_error_is_retried_once_then_succeeds(self) -> None:
-        client = FakeClient(
-            httpx.ConnectError("boom"), FakeResponse(payload={"choices": [
-                {"message": {"content": "second try"}}
-            ]})
-        )
-        reply = _provider(client).complete(_messages())
-        assert reply == "second try"
-        assert client.call_count == 2
+        assert captured["model"] == "test-model"
+        assert captured["response_format"]["type"] == "json_schema"
+        assert captured["response_format"]["json_schema"]["strict"] is True
+        assert captured["tool_choice"] == "auto"
+        assert response.tool_calls[0].arguments == {"query": "x"}
 
-    def test_two_network_errors_raise_after_retry(self) -> None:
-        client = FakeClient(httpx.ReadTimeout("slow"), httpx.ConnectError("down"))
-        with pytest.raises(AIProviderError, match="after 1 retry"):
-            _provider(client).complete(_messages())
-        assert client.call_count == 2
-
-    def test_429_is_not_retried_and_carries_summary(self) -> None:
-        client = FakeClient(FakeResponse(429, {"error": "rate limited"}))
-        with pytest.raises(AIProviderError, match=r"HTTP 429.*rate limited"):
-            _provider(client).complete(_messages())
-        assert client.call_count == 1
-
-    def test_5xx_is_not_retried(self) -> None:
-        client = FakeClient(FakeResponse(503, {"error": "overloaded"}))
-        with pytest.raises(AIProviderError, match="HTTP 503"):
-            _provider(client).complete(_messages())
-        assert client.call_count == 1
-
-    def test_4xx_reports_rejection(self) -> None:
-        client = FakeClient(FakeResponse(401, {"error": "bad key"}))
-        with pytest.raises(AIProviderError, match=r"HTTP 401.*bad key"):
-            _provider(client).complete(_messages())
-
-    def test_unexpected_response_shape_is_actionable(self) -> None:
-        client = FakeClient(FakeResponse(200, {"unexpected": True}))
-        with pytest.raises(AIProviderError, match="unexpected response shape"):
-            _provider(client).complete(_messages())
-
-    def test_missing_api_key_names_the_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        provider = OpenAICompatibleProvider(AIConfig(api_key_env="OPENAI_API_KEY"))
-        with pytest.raises(AIProviderError, match=r"\$OPENAI_API_KEY"):
-            provider.complete(_messages())
-
-    def test_api_key_only_ever_read_from_environment(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_missing_api_key_names_only_the_environment_variable(
+        self, monkeypatch
     ) -> None:
-        # the key must flow to the transport, never to disk-bound config
-        monkeypatch.setenv("TEST_AI_KEY", "secret-value")
-        client = FakeClient(FakeResponse())
-        _provider(client, api_key_env="TEST_AI_KEY").complete(_messages())
-        assert client.calls[0]["headers"]["Authorization"] == "Bearer secret-value"
-        assert "secret-value" not in json.dumps(client.calls[0]["json"])
+        monkeypatch.delenv("TEST_EXPERIENCEOS_KEY", raising=False)
+        provider = OpenAICompatibleProvider(AIConfig(api_key_env="TEST_EXPERIENCEOS_KEY"))
+        with pytest.raises(AIProviderError, match="TEST_EXPERIENCEOS_KEY"):
+            provider.generate([Message(role="user", content="hello")])
 
+    def test_real_http_path_uses_bearer_key_without_putting_it_in_payload(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setenv("TEST_EXPERIENCEOS_KEY", "super-secret")
+        captured = {}
 
-class TestMockProvider:
-    def test_satisfies_protocol(self) -> None:
-        assert isinstance(MockProvider("ok"), LLMProvider)
+        class FakeResponse:
+            status_code = 200
+            text = ""
 
-    def test_replays_scripted_replies_in_order(self) -> None:
-        provider = MockProvider("first", "second")
-        assert provider.complete(_messages()) == "first"
-        assert provider.complete(_messages()) == "second"
+            @staticmethod
+            def json():
+                return {"choices": [{"message": {"content": "hello"}}]}
 
-    def test_repeats_last_reply_when_exhausted(self) -> None:
-        provider = MockProvider("only")
-        provider.complete(_messages())
-        assert provider.complete(_messages()) == "only"
-        assert provider.replies_used == 2
+        def fake_post(url, *, headers, json, timeout):
+            captured.update(
+                {"url": url, "headers": headers, "payload": json, "timeout": timeout}
+            )
+            return FakeResponse()
 
-    def test_records_every_request(self) -> None:
-        provider = MockProvider("ok")
-        provider.complete([Message(role="system", content="s")])
-        provider.complete([Message(role="user", content="u")])
-        assert [len(call) for call in provider.calls] == [1, 1]
-        assert provider.calls[1][0].content == "u"
+        monkeypatch.setattr(httpx, "post", fake_post)
+        provider = OpenAICompatibleProvider(
+            AIConfig(
+                base_url="https://models.example/v1",
+                model="real-model",
+                api_key_env="TEST_EXPERIENCEOS_KEY",
+            )
+        )
+        assert provider.complete([Message(role="user", content="hello")]) == "hello"
+        assert captured["url"] == "https://models.example/v1/chat/completions"
+        assert captured["headers"]["Authorization"] == "Bearer super-secret"
+        assert "super-secret" not in json.dumps(captured["payload"])
 
-    def test_requires_at_least_one_reply(self) -> None:
-        with pytest.raises(ValueError):
-            MockProvider()
+    def test_network_error_is_retried_once(self, monkeypatch) -> None:
+        monkeypatch.setenv("TEST_EXPERIENCEOS_KEY", "secret")
+        calls = 0
 
+        class FakeResponse:
+            status_code = 200
+            text = ""
 
-class TestBuildProvider:
-    def test_builds_openai_compatible_from_config(self) -> None:
-        provider = build_provider(AIConfig())
-        assert isinstance(provider, OpenAICompatibleProvider)
-        assert provider.name == "openai-compat"
+            @staticmethod
+            def json():
+                return {"choices": [{"message": {"content": "recovered"}}]}
 
-    def test_unknown_provider_name_is_actionable(self) -> None:
-        with pytest.raises(AIProviderError, match=r"unknown ai.provider"):
-            build_provider(AIConfig(provider="quantum"))
+        def flaky_post(url, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise httpx.ConnectError("offline", request=httpx.Request("POST", url))
+            return FakeResponse()
+
+        monkeypatch.setattr(httpx, "post", flaky_post)
+        provider = OpenAICompatibleProvider(
+            AIConfig(
+                api_key_env="TEST_EXPERIENCEOS_KEY",
+                max_retries=1,
+                retry_base_seconds=0,
+                retry_jitter_seconds=0,
+            )
+        )
+        assert provider.complete([Message(role="user", content="hello")]) == "recovered"
+        assert calls == 2
+
+    def test_rate_limit_retry_records_request_id_and_usage(self, monkeypatch) -> None:
+        monkeypatch.setenv("TEST_EXPERIENCEOS_KEY", "secret")
+        responses = [
+            _FakeHTTPResponse(
+                429,
+                {"error": "slow down"},
+                headers={"retry-after": "0", "x-request-id": "req_rate"},
+            ),
+            _FakeHTTPResponse(
+                200,
+                {
+                    "choices": [{"message": {"content": "recovered"}}],
+                    "usage": {
+                        "prompt_tokens": 11,
+                        "completion_tokens": 4,
+                        "total_tokens": 15,
+                    },
+                },
+                headers={"x-request-id": "req_ok"},
+            ),
+        ]
+        monkeypatch.setattr(httpx, "post", lambda *args, **kwargs: responses.pop(0))
+        provider = OpenAICompatibleProvider(
+            AIConfig(
+                api_key_env="TEST_EXPERIENCEOS_KEY",
+                max_retries=1,
+                retry_base_seconds=0,
+                retry_jitter_seconds=0,
+            )
+        )
+
+        assert provider.complete([Message(role="user", content="hello")]) == "recovered"
+        assert provider.last_metrics is not None
+        assert provider.last_metrics.retry_count == 1
+        assert provider.last_metrics.request_id == "req_ok"
+        assert provider.last_metrics.total_tokens == 15
+
+    @pytest.mark.parametrize(
+        ("status_code", "error_type"),
+        [(429, "rate_limit"), (503, "server_error")],
+    )
+    def test_exhausted_http_failures_are_classified(
+        self, monkeypatch, status_code, error_type
+    ) -> None:
+        monkeypatch.setenv("TEST_EXPERIENCEOS_KEY", "secret")
+        monkeypatch.setattr(
+            httpx,
+            "post",
+            lambda *args, **kwargs: _FakeHTTPResponse(
+                status_code,
+                {"error": "unavailable"},
+                headers={"x-request-id": "req_failed"},
+            ),
+        )
+        provider = OpenAICompatibleProvider(
+            AIConfig(api_key_env="TEST_EXPERIENCEOS_KEY", max_retries=0)
+        )
+
+        with pytest.raises(AIProviderError) as captured:
+            provider.complete([Message(role="user", content="hello")])
+
+        assert captured.value.metadata["error_type"] == error_type
+        assert captured.value.metadata["request_id"] == "req_failed"
+
+    def test_timeout_is_bounded_and_classified(self, monkeypatch) -> None:
+        monkeypatch.setenv("TEST_EXPERIENCEOS_KEY", "secret")
+        attempts = 0
+
+        def timeout(url, **kwargs):
+            nonlocal attempts
+            attempts += 1
+            raise httpx.ReadTimeout("slow", request=httpx.Request("POST", url))
+
+        monkeypatch.setattr(httpx, "post", timeout)
+        provider = OpenAICompatibleProvider(
+            AIConfig(
+                api_key_env="TEST_EXPERIENCEOS_KEY",
+                max_retries=1,
+                retry_base_seconds=0,
+                retry_jitter_seconds=0,
+            )
+        )
+
+        with pytest.raises(AIProviderError) as captured:
+            provider.complete([Message(role="user", content="hello")])
+
+        assert attempts == 2
+        assert captured.value.metadata["error_type"] == "timeout"
+        assert captured.value.metadata["retry_count"] == 1
+
+    def test_responses_adapter_replays_function_call_items(self, monkeypatch) -> None:
+        provider = OpenAIResponsesProvider(
+            AIConfig(provider="openai-responses", model="test-responses")
+        )
+        payloads = []
+        replies = [
+            {
+                "output": [
+                    {
+                        "type": "reasoning",
+                        "id": "rs_1",
+                        "encrypted_content": "encrypted-state",
+                    },
+                    {
+                        "type": "function_call",
+                        "call_id": "call_1",
+                        "name": "lookup",
+                        "arguments": '{"query":"x"}',
+                    }
+                ]
+            },
+            {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": '{"ok":true}'}],
+                    }
+                ]
+            },
+        ]
+
+        def fake_post(payload):
+            payloads.append(payload)
+            return replies.pop(0)
+
+        monkeypatch.setattr(provider, "_post", fake_post)
+        first = provider.generate(
+            [
+                Message(role="system", content="Be grounded."),
+                Message(role="user", content="x"),
+            ],
+            response_schema=ProviderHealth.model_json_schema(),
+            tools=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup",
+                        "description": "Lookup x",
+                        "strict": True,
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        )
+        second = provider.generate(
+            [
+                Message(role="system", content="Be grounded."),
+                Message(role="user", content="x"),
+                first.as_message(),
+                Message(role="tool", content='{"value":1}', tool_call_id="call_1"),
+            ]
+        )
+
+        assert first.tool_calls[0].name == "lookup"
+        assert payloads[0]["store"] is False
+        assert payloads[0]["include"] == ["reasoning.encrypted_content"]
+        assert payloads[0]["tools"][0]["name"] == "lookup"
+        assert payloads[0]["text"]["format"]["strict"] is True
+        assert payloads[1]["input"][-3] == {
+            "type": "reasoning",
+            "id": "rs_1",
+            "encrypted_content": "encrypted-state",
+        }
+        assert payloads[1]["input"][-2]["type"] == "function_call"
+        assert payloads[1]["input"][-1] == {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "output": '{"value":1}',
+        }
+        assert second.content == '{"ok":true}'
+
+    def test_structured_output_is_validated_locally(self) -> None:
+        provider = MockProvider([ModelResponse(content='{"ok": "not-a-bool"}')])
+        with pytest.raises(AIProviderError, match="local validation"):
+            complete_structured(
+                provider,
+                [Message(role="user", content="check")],
+                ProviderHealth,
+                schema_name="provider_health",
+            )

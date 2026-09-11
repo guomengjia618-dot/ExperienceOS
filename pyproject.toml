@@ -61,8 +61,12 @@ json-resume = "experienceos.exporters.json_resume:JsonResumeExporter"
 [tool.hatch.build.targets.wheel]
 packages = ["src/experienceos"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"evals/experience_brief.jsonl" = "experienceos/ai/eval_cases.jsonl"
+"evals/manifest.json" = "experienceos/ai/eval_manifest.json"
+
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "docs", "README.md", "LICENSE", "CHANGELOG.md"]
+include = ["src", "tests", "docs", "evals", "README.md", "LICENSE", "CHANGELOG.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
