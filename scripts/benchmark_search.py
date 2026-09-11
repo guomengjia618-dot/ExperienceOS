@@ -46,7 +46,7 @@ def _make_record(index: int) -> Experience:
         description=f"{topic_en} / {topic_cn} project number {index}",
         technology=tech,
         contribution=[f"built component {index} of the {topic_en}"],
-        result=[f"latency p99 100ms", f"served {10 * index} requests"],
+        result=["latency p99 100ms", f"served {10 * index} requests"],
     )
 
 

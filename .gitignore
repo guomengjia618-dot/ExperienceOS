@@ -34,3 +34,6 @@ Thumbs.db
 # ZCode session-local tool state
 .zcode/
 
+
+# screenshot/demo scratch home
+.experienceos-shots/

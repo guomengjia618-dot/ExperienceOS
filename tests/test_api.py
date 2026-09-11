@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,10 @@ def api(home, make_experience) -> Any:
             result=["40% faster"],
         )
     )
+    # cross a millisecond boundary: same-ms ULIDs are monotonic siblings that
+    # can differ only in their final character, which would make any truncated
+    # prefix ambiguous and break test_get_by_prefix
+    time.sleep(0.002)
     store.save(make_experience(title="Beta Draft", status="draft"))
     return create_app(home=home)
 
