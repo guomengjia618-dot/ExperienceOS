@@ -24,12 +24,17 @@
       <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.1"/></symbol>
       <symbol id="icon-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
       <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M4 20h16"/></symbol>
+      <symbol id="icon-edit" viewBox="0 0 24 24"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 00-3-3L5 17zM14 7l3 3"/></symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol>
     </defs>
   </svg>
   <div class="workspace">
     <aside class="library" aria-labelledby="library-title">
       <a class="brand" href="/"><svg class="icon" aria-hidden="true"><use href="#icon-archive"></use></svg><span>ExperienceOS</span></a>
       <div class="section-head library-heading"><h2 id="library-title"><svg class="icon" aria-hidden="true"><use href="#icon-file"></use></svg>经历</h2><span id="record-count" class="count">—</span></div>
+      <div class="library-tools" id="library-tools" hidden><button type="button" id="new-record" class="secondary tool-button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>新增经历</button><span class="export-group"><button type="button" id="export-md" class="icon-button" title="导出 Markdown 档案" aria-label="导出 Markdown 档案"><svg class="icon" aria-hidden="true"><use href="#icon-download"></use></svg>MD</button><button type="button" id="export-html" class="icon-button" title="导出网页档案" aria-label="导出网页档案"><svg class="icon" aria-hidden="true"><use href="#icon-download"></use></svg>HTML</button></span></div>
       <div id="records" class="records"></div>
       <div class="history"><div class="section-head history-heading"><label id="history-label"><svg class="icon" aria-hidden="true"><use href="#icon-history"></use></svg>最近</label><span id="history-count" class="count">—</span></div><div class="history-select"><button type="button" id="history-toggle" class="history-toggle" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="history-label history-toggle-label"><span id="history-toggle-label" class="history-toggle-label placeholder">选择运行记录</span><svg class="icon chevron" aria-hidden="true"><use href="#icon-chevron"></use></svg></button><div id="history-list" class="history-list" role="listbox" aria-label="运行记录" hidden></div></div></div>
     </aside>
@@ -68,6 +73,30 @@
       </div>
     </main>
   </div>
-  <dialog id="record-dialog" aria-labelledby="detail-title"><div class="dialog-head"><span><svg class="icon" aria-hidden="true"><use href="#icon-file"></use></svg>经历</span><button id="close-detail" class="icon-button" aria-label="关闭经历详情"><svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg></button></div><div id="record-detail"></div></dialog>
+  <dialog id="record-dialog" aria-labelledby="detail-title"><div class="dialog-head"><span><svg class="icon" aria-hidden="true"><use href="#icon-file"></use></svg>经历</span><button id="close-detail" class="icon-button" aria-label="关闭经历详情"><svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg></button></div><div id="record-detail"></div><div id="detail-actions" class="detail-actions" hidden><button type="button" id="edit-record" class="secondary"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>编辑</button><button type="button" id="delete-record" class="danger"><svg class="icon" aria-hidden="true"><use href="#icon-trash"></use></svg>删除</button></div></dialog>
+  <dialog id="form-dialog" aria-labelledby="form-title"><div class="dialog-head"><span><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg><span id="form-title">新增经历</span></span><button type="button" id="close-form" class="icon-button" aria-label="关闭表单"><svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg></button></div>
+    <form id="record-form" class="record-form">
+      <div class="form-grid">
+        <label class="field field-wide">标题<input id="f-title" required maxlength="200" placeholder="例：校园搜索引擎"></label>
+        <label class="field">类型<select id="f-type"><option value="work">工作</option><option value="internship">实习</option><option value="open_source">开源</option><option value="competition">竞赛</option><option value="course_project">课程项目</option><option value="graduation_project">毕业设计</option><option value="personal">个人项目</option><option value="research">研究</option><option value="other">其他</option></select></label>
+        <label class="field">状态<select id="f-status"><option value="active">正式</option><option value="draft">草稿</option><option value="archived">归档</option></select></label>
+        <label class="field">开始<input id="f-start" type="month"></label>
+        <label class="field">结束<input id="f-end" type="month"></label>
+        <label class="field field-wide">角色<input id="f-role" maxlength="500" placeholder="例：检索引擎负责人"></label>
+        <label class="field field-wide">背景<input id="f-context" maxlength="4000"></label>
+        <label class="field field-wide">描述<textarea id="f-description" rows="2" maxlength="8000"></textarea></label>
+        <label class="field">技术<input id="f-technology" placeholder="逗号分隔：Python, Redis"></label>
+        <label class="field">标签<input id="f-tags" placeholder="逗号分隔：backend, ir"></label>
+        <label class="field field-wide">贡献<textarea id="f-contribution" rows="2" placeholder="每行一条"></textarea></label>
+        <label class="field field-wide">挑战<textarea id="f-challenge" rows="2" placeholder="每行一条"></textarea></label>
+        <label class="field field-wide">方案<textarea id="f-solution" rows="2" placeholder="每行一行"></textarea></label>
+        <label class="field field-wide">成果<textarea id="f-result" rows="2" placeholder="每行一条，尽量带数字"></textarea></label>
+        <label class="field field-wide">反思<textarea id="f-reflection" rows="2" maxlength="8000"></textarea></label>
+      </div>
+      <div class="evidence-editor"><p class="evidence-label">证据<button type="button" id="add-evidence" class="secondary">＋ 添加证据</button></p><div id="evidence-rows"></div></div>
+      <p class="form-hint">证据 = 你成果的出处（仓库 / commit / 文档链接）。没有就留白——系统鼓励补证据，而不是编成果。</p>
+      <div class="detail-actions form-actions"><button type="submit" id="save-record" class="primary">保存</button><button type="button" id="cancel-form" class="secondary">取消</button></div>
+    </form>
+  </dialog>
 </body>
 </html>
