@@ -28,6 +28,7 @@ from experienceos.core.models import Experience
 INDEX_FILENAME = "search.index"
 DEFAULT_THRESHOLD = 1000
 FETCH_LIMIT = 500  # FTS hits fetched before in-memory filters narrow them
+BUSY_TIMEOUT_MS = 5000  # wait for a concurrent writer instead of failing
 
 _CJK_RE = re.compile(r"([\u4e00-\u9fff])")
 
@@ -42,6 +43,19 @@ def index_exists(home: Path) -> bool:
     return index_path(home).exists()
 
 
+def _connect(path: Path) -> sqlite3.Connection:
+    """One index connection with a lock-wait budget.
+
+    ``timeout`` and the PRAGMA configure the same SQLite busy handler;
+    stating both keeps the intent visible regardless of which API a
+    caller reads. Without it a concurrent writer used to surface as an
+    immediate "database is locked" and the update was silently dropped.
+    """
+    connection = sqlite3.connect(path, timeout=BUSY_TIMEOUT_MS / 1000)
+    connection.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+    return connection
+
+
 def delete_index(home: Path) -> bool:
     path = index_path(home)
     if not path.exists():
@@ -54,7 +68,7 @@ def build_index(home: Path, experiences: Iterable[Experience]) -> int:
     """(Re)create the index from *experiences*; return the record count."""
     path = index_path(home)
     path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(path)
+    connection = _connect(path)
     try:
         connection.execute("DROP TABLE IF EXISTS experiences")
         connection.execute(
@@ -74,6 +88,28 @@ def build_index(home: Path, experiences: Iterable[Experience]) -> int:
     return count
 
 
+def index_doc_count(home: Path) -> int | None:
+    """Live row count of an existing index; None when absent or unreadable.
+
+    The services layer compares this against the number of record files
+    to detect a silently stale index (a failed best-effort upsert, an
+    index built before an import) and rebuild from the source of truth.
+    An index from an older build without the expected table also reads
+    as None, which triggers the same one-time rebuild.
+    """
+    if not index_exists(home):
+        return None
+    try:
+        connection = _connect(index_path(home))
+        try:
+            row = connection.execute("SELECT count(*) FROM experiences").fetchone()
+        finally:
+            connection.close()
+    except sqlite3.Error:
+        return None
+    return int(row[0]) if row is not None else None
+
+
 def upsert_experience(home: Path, experience: Experience) -> bool:
     """Refresh one record's row in an existing index; best-effort.
 
@@ -85,7 +121,7 @@ def upsert_experience(home: Path, experience: Experience) -> bool:
     if not index_exists(home):
         return False
     try:
-        connection = sqlite3.connect(index_path(home))
+        connection = _connect(index_path(home))
         try:
             # FTS5 tables have no UNIQUE constraint on `id`, so an upsert
             # is delete-then-insert inside one transaction.
@@ -110,7 +146,7 @@ def remove_experience(home: Path, experience_id: str) -> bool:
     if not index_exists(home):
         return False
     try:
-        connection = sqlite3.connect(index_path(home))
+        connection = _connect(index_path(home))
         try:
             connection.execute("DELETE FROM experiences WHERE id = ?", (experience_id,))
             connection.commit()
@@ -127,7 +163,7 @@ def fts_search(home: Path, text: str, limit: int | None = None) -> list[str]:
     terms = _tokenize(text).split()
     if not terms or not index_exists(home):
         return []
-    connection = sqlite3.connect(index_path(home))
+    connection = _connect(index_path(home))
     try:
         rows = connection.execute(
             "SELECT id FROM experiences WHERE experiences MATCH ? "
