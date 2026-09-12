@@ -68,8 +68,10 @@ experienceos search "搜索引擎 inverted index"
 
 ```bash
 experienceos config set ai.model glm-4.7      # GLM / DeepSeek / OpenAI / Ollama 均可
-experienceos ai check                          # 结构化输出连通性自检
-experienceos ai eval --live                    # 用真实模型跑同一套评测集
+experienceos config set ai.extra_body_json "{\"thinking\":{\"type\":\"disabled\"}}"
+                                              # GLM 等思考型模型:结构化输出需关思考
+experienceos ai check                         # 结构化输出连通性自检
+experienceos ai eval --live                   # 用真实模型跑同一套评测集
 ```
 
 ## 导入：把碎片变成草稿
@@ -104,13 +106,22 @@ experienceos ai eval --live                    # 用真实模型跑同一套评�
 $ experienceos ai eval
 Evaluation (recorded): 9/9 expectations passed (100%)
 tool sequence 100% · schema 100% · grounding 100% · completion 100% · recovery 100%
+
+$ experienceos ai eval --live        # glm-4.7 实测（2026-09）
+Evaluation (live model): 8/9 expectations passed (89%)
+completion 100% · grounding 100% · schema validity 100%
 ```
 
-9 条带标签的评测用例断言工具调用序列、schema 合法性、引用接地和错误恢复；
-`--live` 可用真实模型跑同一数据集。数据集附 sha256 manifest，并明确声明
-这些数字**不**可用于模型准确率宣传。诚实边界：接地校验是**存在性校验**
-（引用的证据确实在本次运行中被读取过），不等于语义蕴含——它保证结论的
-出处可回溯，不能替代人对结论的判断。
+9 条带标签的评测用例断言工具调用、schema 合法性、引用接地和错误恢复。
+**录制回放是精确回归**（工具序列全等）；**live 是冒烟语义**（工具覆盖
++ 实质内容任一命中），两者断言强度不同、分开报告。上表 live 唯一失败
+是真发现：模型对特定记录的提问连搜 11 次都没加载记录就作答——护栏可以
+拒绝幻觉引用，但无法强迫模型读档，这正是评测要暴露的。
+
+数据集附 sha256 manifest，并明确声明这些数字**不**可用于模型准确率
+宣传。诚实边界：接地校验是**存在性校验**（引用的证据确实在本次运行中
+被读取过），不等于语义蕴含——它保证结论的出处可回溯，不能替代人对
+结论的判断。
 
 **证据可以自动核验**——`experienceos verify` 把每条 GitHub 证据拿去
 REST API 对证：仓库、commit（含作者与日期）、PR（作者/状态/是否合并），

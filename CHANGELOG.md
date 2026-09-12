@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-09-12
+
+Live-model hardening: the first real-model run (GLM glm-4.7) surfaced
+four compatibility gaps that recorded replay could never expose — each
+fixed structurally, then re-measured live (8/9, completion/grounding/
+schema all 100%).
+
+### Added
+
+- `ai.extra_body_json` config: a JSON object merged into every request
+  body, for backend-specific knobs without first-class fields (GLM's
+  `{"thinking": {"type": "disabled"}}` being the motivating case — its
+  thinking mode conflicts with structured output and returns empty
+  content). Includes a config.toml string-escaping fix for values with
+  embedded quotes.
+- The evidence-brief system prompt (v2) embeds the exact output schema:
+  some OpenAI-compatible backends silently ignore `response_format`'s
+  json_schema and invent their own output shape. The schema-repair
+  request now includes the schema too.
+- Tool errors feed back as tool results: a strict-tool rejection (e.g.
+  an out-of-range limit) lets the model self-correct instead of pausing
+  the whole run; failed reads ground nothing in citation validation.
+- Live evaluation semantics split from recorded: recorded replay stays
+  an exact regression (tool-sequence equality, all terms); live runs
+  assert structural soundness (required tools used, any-of substance
+  terms, `expected_status_live` per case) and say so in the report.
+
+### Fixed
+
+- OpenAI-compatible responses wrapped in markdown code fences (GLM and
+  others do this even under a forced JSON schema) are peeled by the
+  adapter before strict local validation.
+
 ## [0.7.2] - 2026-09-12
 
 First PyPI-distributed release: `pip install experienceos` now works,
@@ -261,7 +294,8 @@ First public foundation release (Milestone 0).
 - CI workflow (GitHub Actions: ruff + pytest on Python 3.10-3.13,
   Ubuntu + Windows).
 
-[Unreleased]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.6.0...v0.7.0

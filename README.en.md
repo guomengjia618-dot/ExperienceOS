@@ -71,6 +71,8 @@ experienceos search "search engine inverted index"
 
 ```bash
 experienceos config set ai.model glm-4.7      # GLM / DeepSeek / OpenAI / Ollama
+experienceos config set ai.extra_body_json "{\"thinking\":{\"type\":\"disabled\"}}"
+                                              # thinking models (GLM): disable for structured output
 experienceos ai check                          # structured-output connectivity check
 experienceos ai eval --live                    # same eval suite on the real model
 ```
@@ -110,11 +112,21 @@ allowed to answer out of thin air.**
 $ experienceos ai eval
 Evaluation (recorded): 9/9 expectations passed (100%)
 tool sequence 100% · schema 100% · grounding 100% · completion 100% · recovery 100%
+
+$ experienceos ai eval --live        # glm-4.7, measured 2026-09
+Evaluation (live model): 8/9 expectations passed (89%)
+completion 100% · grounding 100% · schema validity 100%
 ```
 
-The 9 labelled cases assert tool-call sequences, schema validity, citation
-grounding and error recovery; `--live` runs the same suite against a real
-model. The dataset ships with a sha256 manifest that states what these
+The 9 labelled cases assert tool calls, schema validity, citation grounding
+and error recovery. **Recorded replay is an exact regression** (tool-sequence
+equality); **live is a smoke evaluation** (tool coverage + any-of substance
+terms) — different assertion strengths, reported separately. The single live
+failure above is a genuine finding: asked about one specific record, the
+model searched eleven times without ever loading it — the guardrails can
+reject hallucinated citations but cannot force the model to read.
+
+The dataset ships with a sha256 manifest that states what these
 numbers are **not** valid for. Honest boundary: grounding validation is an
 *existence* check — it proves cited evidence was actually loaded during the
 run, not that the conclusions are semantically entailed; human judgment on
