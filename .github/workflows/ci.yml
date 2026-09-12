@@ -51,7 +51,13 @@ jobs:
           pip install -e ".[ai,dev,github]"
           pip install pytest-cov
       - name: Test with coverage
-        run: python -m pytest --cov=experienceos --cov-report=term-missing --cov-fail-under=80
+        run: python -m pytest --cov=experienceos --cov-report=term-missing --cov-report=xml --cov-fail-under=80
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          files: coverage.xml
+          fail_ci_if_error: false
 
   package:
     runs-on: ubuntu-latest
