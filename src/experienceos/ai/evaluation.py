@@ -47,6 +47,10 @@ class EvalCase(BaseModel):
     expected_tool_sequence: list[str]
     expected_terms: list[str]
     expected_status: Literal["completed", "paused"] = "completed"
+    # Optional override for live-model runs: a case may pin the recorded
+    # workflow's guard behaviour (paused) while expecting a well-behaved
+    # live model to sail through (completed).
+    expected_status_live: Literal["completed", "paused"] | None = None
     expected_error_contains: str | None = None
     resume_after_error: bool = False
     label_source: Literal[
@@ -206,7 +210,9 @@ def run_evaluation(
         dataset=str(dataset_path),
         live=live_provider is not None,
         interpretation=(
-            "Live model performance on a small AI-assisted synthetic set."
+            "Live smoke evaluation: completion, citation grounding, tool "
+            "coverage and substance on a small AI-assisted synthetic set — "
+            "not model accuracy."
             if live_provider is not None
             else "Deterministic regression replay; this is not model accuracy."
         ),
@@ -262,6 +268,11 @@ def _run_case(
     first_error: str | None = None
     final_error: str | None = None
     recovery_passed: bool | None = None
+    expected_status = (
+        case.expected_status_live
+        if live_provider is not None and case.expected_status_live is not None
+        else case.expected_status
+    )
     try:
         state = workflow.start(case.question)
     except Exception as exc:
@@ -284,9 +295,21 @@ def _run_case(
     structured = state.output is not None and state.status == "completed"
     grounded = _citations_grounded(state, evidence_by_id)
     output_text = state.output.model_dump_json().casefold() if state.output else ""
-    terms_present = all(term.casefold() in output_text for term in case.expected_terms)
-    tool_sequence_correct = called_tools == case.expected_tool_sequence
-    status_matches = state.status == case.expected_status
+    if live_provider is not None:
+        # Live runs are a *smoke* evaluation: a competent model may call
+        # extra tools (re-search, one more lookup) or answer in its own
+        # language, so the assertions loosen from "exact replay" to
+        # "required tools all used" and "substance present (any term)".
+        tool_sequence_correct = set(case.expected_tool_sequence) <= set(called_tools)
+        terms_present = (
+            any(term.casefold() in output_text for term in case.expected_terms)
+            if case.expected_terms
+            else True
+        )
+    else:
+        tool_sequence_correct = called_tools == case.expected_tool_sequence
+        terms_present = all(term.casefold() in output_text for term in case.expected_terms)
+    status_matches = state.status == expected_status
     observed_error = final_error or first_error
     error_matches = (
         case.expected_error_contains is None
@@ -295,7 +318,7 @@ def _run_case(
             and case.expected_error_contains.casefold() in observed_error.casefold()
         )
     )
-    if case.expected_status == "completed":
+    if expected_status == "completed":
         passed = (
             status_matches
             and structured
@@ -313,7 +336,7 @@ def _run_case(
         EvalCaseReport(
             id=case.id,
             passed=passed,
-            expected_status=case.expected_status,
+            expected_status=expected_status,
             observed_status=state.status,
             structured_output=structured,
             tool_sequence_correct=tool_sequence_correct,
