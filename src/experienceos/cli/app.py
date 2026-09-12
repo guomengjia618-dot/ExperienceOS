@@ -1274,6 +1274,8 @@ _CONFIG_KEYS: dict[str, str] = {
     "ai.api_key_env": "env var holding the API key — never the key itself",
     "ai.timeout_seconds": "request timeout in seconds",
     "ai.max_retries": "max retries for retryable failures (timeout/429/5xx)",
+    "ai.extra_body_json": "JSON object merged into request bodies (e.g. "
+    'GLM: {"thinking": {"type": "disabled"}})',
     "ai.input_cost_per_million_usd": "input price per million tokens (cost estimates)",
     "ai.output_cost_per_million_usd": "output price per million tokens (cost estimates)",
 }

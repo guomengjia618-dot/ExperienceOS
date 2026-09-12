@@ -381,3 +381,71 @@ class TestProviderProtocol:
                 ProviderHealth,
                 schema_name="provider_health",
             )
+
+
+class TestCodeFenceStripping:
+    """GLM/DeepSeek/Ollama wrap JSON in markdown fences even under a forced
+    JSON schema; the OpenAI-compatible adapter normalizes before returning."""
+
+    def _provider_returning(self, content: str | None) -> ModelResponse:
+        provider = OpenAICompatibleProvider(AIConfig())
+        provider._post = lambda payload: {  # type: ignore[method-assign]
+            "choices": [{"message": {"content": content}}]
+        }
+        return provider.generate([Message(role="user", content="hi")])
+
+    def test_fenced_json_is_peeled(self) -> None:
+        response = self._provider_returning(
+            '```json\n{"ok": true, "note": "structured output works."}\n```'
+        )
+        assert response.content == '{"ok": true, "note": "structured output works."}'
+
+    def test_bare_fence_without_language(self) -> None:
+        response = self._provider_returning('```\n{"a": 1}\n```')
+        assert response.content == '{"a": 1}'
+
+    def test_plain_json_passes_through_untouched(self) -> None:
+        response = self._provider_returning('{"a": 1}')
+        assert response.content == '{"a": 1}'
+
+    def test_none_and_prose_are_untouched(self) -> None:
+        assert self._provider_returning(None).content is None
+        assert self._provider_returning("plain text").content == "plain text"
+
+
+class TestExtraBody:
+    def test_extra_body_json_is_merged_into_payload(self) -> None:
+        captured: dict = {}
+
+        def fake_post(payload: dict) -> dict:
+            captured.update(payload)
+            return {"choices": [{"message": {"content": "{}"}}]}
+
+        provider = OpenAICompatibleProvider(
+            AIConfig(
+                base_url="https://open.bigmodel.cn/api/paas/v4",
+                model="glm-4.7",
+                extra_body_json='{"thinking": {"type": "disabled"}}',
+            )
+        )
+        provider._post = fake_post  # type: ignore[method-assign]
+        provider.generate([Message(role="user", content="hi")])
+        assert captured["thinking"] == {"type": "disabled"}
+
+    def test_extra_body_defaults_to_no_merge(self) -> None:
+        captured: dict = {}
+
+        def fake_post(payload: dict) -> dict:
+            captured.update(payload)
+            return {"choices": [{"message": {"content": "{}"}}]}
+
+        provider = OpenAICompatibleProvider(AIConfig())
+        provider._post = fake_post  # type: ignore[method-assign]
+        provider.generate([Message(role="user", content="hi")])
+        assert "thinking" not in captured
+
+    def test_invalid_extra_body_json_is_rejected(self) -> None:
+        from experienceos.core.errors import AIProviderError
+
+        with pytest.raises((ValueError, AIProviderError)):
+            AIConfig(extra_body_json="not-json")

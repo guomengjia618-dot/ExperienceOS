@@ -44,8 +44,21 @@ class AIConfig:
     retry_time_budget_seconds: float = 30.0
     input_cost_per_million_usd: float = 0.0
     output_cost_per_million_usd: float = 0.0
+    # JSON object merged into every request body, for backend-specific
+    # knobs that have no first-class field (e.g. GLM's thinking toggle:
+    # '{"thinking": {"type": "disabled"}}'). Empty string = no merge.
+    extra_body_json: str = ""
 
     def __post_init__(self) -> None:
+        if self.extra_body_json.strip():
+            import json
+
+            try:
+                parsed = json.loads(self.extra_body_json)
+            except ValueError as exc:
+                raise ValueError(f"ai.extra_body_json is not valid JSON: {exc}") from exc
+            if not isinstance(parsed, dict):
+                raise ValueError("ai.extra_body_json must be a JSON object")
         self.timeout_seconds = float(self.timeout_seconds)
         self.max_retries = int(self.max_retries)
         self.retry_base_seconds = float(self.retry_base_seconds)
@@ -112,7 +125,8 @@ def _format_toml_value(value: Any) -> str:
         return "true" if value else "false"
     if isinstance(value, (int, float)):
         return repr(value)
-    return f'"{value}"'
+    escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
 
 
 def save_config(home: Path, config: AppConfig) -> Path:

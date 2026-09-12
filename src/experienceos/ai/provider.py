@@ -12,6 +12,7 @@ record is the caller's job and must go through user confirmation —
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -21,6 +22,26 @@ from pydantic import ValidationError as PydanticValidationError
 from experienceos.ai.transport import HTTPResult, OpenAIHTTPTransport, RequestMetrics
 from experienceos.config import AIConfig
 from experienceos.core.errors import AIProviderError
+
+_FENCE_OPEN_RE = re.compile(r"^```[a-zA-Z0-9_-]*[ \t]*\r?\n?")
+
+
+def _strip_code_fence(content: str | None) -> str | None:
+    """Peel a markdown code fence off a response's text content.
+
+    Several OpenAI-compatible backends (GLM, DeepSeek reasoning modes,
+    Ollama models) wrap JSON in ``` fences even when a JSON schema is
+    forced via ``response_format``. Local validation downstream is
+    strict by design, so the adapter normalizes instead of asking every
+    caller to tolerate prose-wrapped JSON.
+    """
+    if content is None or not content.lstrip().startswith("```"):
+        return content
+    text = content.strip()
+    text = _FENCE_OPEN_RE.sub("", text, count=1)
+    if text.endswith("```"):
+        text = text[:-3]
+    return text.strip() or None
 
 
 @dataclass(frozen=True)
@@ -141,6 +162,9 @@ class OpenAICompatibleProvider:
     ) -> None:
         self._config = config
         self._transport = transport or OpenAIHTTPTransport(config, provider_name=self.name)
+        self._extra_body: dict[str, Any] = {}
+        if config.extra_body_json.strip():
+            self._extra_body = json.loads(config.extra_body_json)
 
     @property
     def model(self) -> str:
@@ -174,6 +198,8 @@ class OpenAICompatibleProvider:
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
+        if self._extra_body:
+            payload.update(self._extra_body)
 
         result = self._post(payload)
         if isinstance(result, HTTPResult):
@@ -186,7 +212,7 @@ class OpenAICompatibleProvider:
             message = data["choices"][0]["message"]
             calls = tuple(ToolCall.from_api(call) for call in message.get("tool_calls", ()))
             return ModelResponse(
-                content=message.get("content"),
+                content=_strip_code_fence(message.get("content")),
                 tool_calls=calls,
                 metrics=metrics,
             )

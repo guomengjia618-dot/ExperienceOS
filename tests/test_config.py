@@ -80,3 +80,9 @@ def test_invalid_timeout_fails_with_validation_error(tmp_path) -> None:
     )
     with pytest.raises(ValidationError, match=r"invalid \[ai\]"):
         load_config(tmp_path)
+
+
+def test_config_roundtrips_values_with_quotes_and_backslashes(tmp_path) -> None:
+    value = '{"thinking": {"type": "disabled"}, "note": "say \\"hi\\""}'
+    save_config(tmp_path, AppConfig(ai=AIConfig(extra_body_json=value)))
+    assert load_config(tmp_path).ai.extra_body_json == value
