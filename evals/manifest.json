@@ -1,7 +1,7 @@
 {
   "manifest_version": 1,
   "dataset": "experience_brief.jsonl",
-  "dataset_sha256": "38d445c8ab1d4c87610e98f37c508ec5010e0123dd7f30a1502e0a72659630ae",
+  "dataset_sha256": "340cd352678b8ad23418b0d58198b64db8680ce34870ccf03b2654a084312ab8",
   "case_count": 9,
   "created_on": "2026-08-28",
   "data_origin": "ai-assisted-synthetic",

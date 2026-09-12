@@ -290,3 +290,81 @@ def test_eval_manifest_matches_dataset_and_discloses_provenance() -> None:
     assert {case.label_source for case in cases} == {"ai-assisted-synthetic"}
     assert manifest["contains_real_user_data"] is False
     assert manifest["label_review"] == "not-independently-human-reviewed"
+
+
+
+def grounded_get(exp: Any) -> ModelResponse:
+    """A turn that loads the record, satisfying the grounding precondition."""
+    return ModelResponse(
+        tool_calls=(ToolCall("get", "get_experience", {"id_or_prefix": exp.id}),)
+    )
+
+
+def test_checkpoint_records_prompt_versions(home, store, make_experience) -> None:
+    from experienceos.ai.prompts import PROMPT_VERSIONS
+
+    exp = make_experience(
+        evidence=[{"kind": "repo", "location": "github.com/example/search"}]
+    )
+    store.save(exp)
+    checkpoints = WorkflowCheckpointStore(home)
+    workflow = EvidenceBriefWorkflow(
+        provider=RecordedProvider([grounded_get(exp), final_brief(exp)]),
+        tools=ExperienceToolRegistry(store),
+        checkpoints=checkpoints,
+    )
+
+    state = workflow.start("Summarize")
+
+    assert state.prompt_versions["evidence_brief_system"] == PROMPT_VERSIONS[
+        "evidence_brief_system"
+    ]
+    # reloaded from disk: the version survives checkpointing
+    assert checkpoints.load(state.workflow_id).prompt_versions == state.prompt_versions
+
+
+def test_final_output_gets_exactly_one_schema_repair_round(
+    home, store, make_experience
+) -> None:
+    exp = make_experience(
+        evidence=[{"kind": "repo", "location": "github.com/example/search"}]
+    )
+    store.save(exp)
+    invalid = ModelResponse(content=json.dumps({"answer": "missing everything"}))
+    provider = RecordedProvider([grounded_get(exp), invalid, final_brief(exp)])
+    workflow = EvidenceBriefWorkflow(
+        provider=provider,
+        tools=ExperienceToolRegistry(store),
+        checkpoints=WorkflowCheckpointStore(home),
+    )
+
+    state = workflow.start("Summarize")
+
+    assert state.status == "completed"
+    assert state.output is not None
+    assert len(provider.calls) == 3  # tool round, failed final, repair round
+    repair_message = state.messages[-2]
+    assert repair_message["role"] == "user"
+    assert "failed schema validation" in repair_message["content"]
+
+
+def test_second_invalid_answer_still_pauses(home, store, make_experience) -> None:
+    exp = make_experience(
+        evidence=[{"kind": "repo", "location": "github.com/example/search"}]
+    )
+    store.save(exp)
+    provider = RecordedProvider(
+        [
+            grounded_get(exp),
+            ModelResponse(content=json.dumps({"answer": "incomplete"})),
+            ModelResponse(content=json.dumps({"answer": "still incomplete"})),
+        ]
+    )
+    workflow = EvidenceBriefWorkflow(
+        provider=provider,
+        tools=ExperienceToolRegistry(store),
+        checkpoints=WorkflowCheckpointStore(home),
+    )
+
+    with pytest.raises(WorkflowError, match="schema validation"):
+        workflow.start("Summarize")

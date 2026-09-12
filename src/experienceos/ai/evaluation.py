@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -18,6 +17,7 @@ from experienceos.ai.workflow import (
     WorkflowState,
 )
 from experienceos.core.errors import AIProviderError
+from experienceos.core.fsutil import atomic_write_text
 from experienceos.core.models import Experience
 from experienceos.storage import ExperienceStore
 
@@ -82,11 +82,12 @@ class EvalCaseReport(BaseModel):
 class EvaluationReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    report_version: int = 2
+    report_version: int = 3
     generated_at: datetime
     dataset: str
     live: bool
     interpretation: str
+    prompt_versions: dict[str, str] = Field(default_factory=dict)
     passed: int
     total: int
     expectation_pass_rate: float
@@ -128,12 +129,7 @@ def save_evaluation_report(report: EvaluationReport, path: Path) -> Path:
     shareable.dataset = Path(shareable.dataset).name
     for case in shareable.cases:
         case.error = _redacted_error(case.error)
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(shareable.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    os.replace(temporary, path)
-    return path
+    return atomic_write_text(Path(path), shareable.model_dump_json(indent=2) + "\n")
 
 
 def _redacted_error(error: str | None) -> str | None:
@@ -185,10 +181,19 @@ def run_evaluation(
 ) -> EvaluationReport:
     """Run expectation-labelled recordings, or use a live provider on the same cases."""
     cases = load_eval_cases(dataset_path)
-    reports = [
+    results = [
         _run_case(case, Path(work_directory) / case.id, live_provider)
         for case in cases
     ]
+    reports = [report for report, _state in results]
+    prompt_versions = next(
+        (
+            dict(state.prompt_versions)
+            for _report, state in results
+            if state is not None and state.prompt_versions
+        ),
+        {},
+    )
     passed_count = sum(report.passed for report in reports)
     completed_expected = [
         report for report in reports if report.expected_status == "completed"
@@ -205,6 +210,7 @@ def run_evaluation(
             if live_provider is not None
             else "Deterministic regression replay; this is not model accuracy."
         ),
+        prompt_versions=prompt_versions,
         passed=passed_count,
         total=len(reports),
         expectation_pass_rate=passed_count / len(reports),
@@ -234,7 +240,7 @@ def _run_case(
     case: EvalCase,
     case_home: Path,
     live_provider: LLMProvider | None,
-) -> EvalCaseReport:
+) -> tuple[EvalCaseReport, WorkflowState | None]:
     case_home.joinpath("experiences").mkdir(parents=True, exist_ok=True)
     store = ExperienceStore(case_home)
     evidence_by_id: dict[str, set[str]] = {}
@@ -303,24 +309,27 @@ def _run_case(
         passed = status_matches and tool_sequence_correct and error_matches
 
     calls = state.model_calls
-    return EvalCaseReport(
-        id=case.id,
-        passed=passed,
-        expected_status=case.expected_status,
-        observed_status=state.status,
-        structured_output=structured,
-        tool_sequence_correct=tool_sequence_correct,
-        citations_grounded=grounded,
-        expected_terms_present=terms_present,
-        recovery_passed=recovery_passed,
-        called_tools=called_tools,
-        latency_ms=_sum_call_values(calls, "latency_ms"),
-        input_tokens=_sum_call_ints(calls, "input_tokens"),
-        output_tokens=_sum_call_ints(calls, "output_tokens"),
-        total_tokens=_sum_call_ints(calls, "total_tokens"),
-        retry_count=sum(int(call.get("retry_count") or 0) for call in calls),
-        estimated_cost_usd=_sum_call_values(calls, "estimated_cost_usd"),
-        error=observed_error,
+    return (
+        EvalCaseReport(
+            id=case.id,
+            passed=passed,
+            expected_status=case.expected_status,
+            observed_status=state.status,
+            structured_output=structured,
+            tool_sequence_correct=tool_sequence_correct,
+            citations_grounded=grounded,
+            expected_terms_present=terms_present,
+            recovery_passed=recovery_passed,
+            called_tools=called_tools,
+            latency_ms=_sum_call_values(calls, "latency_ms"),
+            input_tokens=_sum_call_ints(calls, "input_tokens"),
+            output_tokens=_sum_call_ints(calls, "output_tokens"),
+            total_tokens=_sum_call_ints(calls, "total_tokens"),
+            retry_count=sum(int(call.get("retry_count") or 0) for call in calls),
+            estimated_cost_usd=_sum_call_values(calls, "estimated_cost_usd"),
+            error=observed_error,
+        ),
+        state,
     )
 
 

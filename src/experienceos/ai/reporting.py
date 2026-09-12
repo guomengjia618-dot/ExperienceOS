@@ -2,24 +2,25 @@
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from experienceos.ai.workflow import WorkflowState
+from experienceos.core.fsutil import atomic_write_text
 
 
 class SanitizedRunReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    report_version: int = 1
+    report_version: int = 2
     workflow_id: str
     status: Literal["running", "paused", "completed"]
     provider: str | None
     model: str
+    prompt_versions: dict[str, str] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
     model_call_count: int
@@ -46,6 +47,7 @@ def build_run_report(state: WorkflowState) -> SanitizedRunReport:
         status=state.status,
         provider=_last_string(calls, "provider") or state.provider,
         model=state.model,
+        prompt_versions=dict(state.prompt_versions),
         created_at=state.created_at,
         updated_at=state.updated_at,
         model_call_count=len(calls),
@@ -70,12 +72,7 @@ def build_run_report(state: WorkflowState) -> SanitizedRunReport:
 
 def save_run_report(state: WorkflowState, path: Path) -> Path:
     report = build_run_report(state)
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    os.replace(temporary, path)
-    return path
+    return atomic_write_text(Path(path), report.model_dump_json(indent=2) + "\n")
 
 
 def _last_string(calls: list[dict[str, Any]], key: str) -> str | None:

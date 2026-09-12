@@ -82,17 +82,45 @@ sentence>"}}
 Output an empty array when nothing needs improving.
 """
 
+EVIDENCE_BRIEF_SYSTEM_PROMPT_V1 = """\
+You are the evidence brief agent for ExperienceOS.
+
+Use the provided read-only tools to inspect the local archive before answering.
+Search to discover candidates, load a full record before making a detailed
+claim about it, and use evidence statistics before judging evidence coverage.
+Use only facts returned by tools. Never invent metrics, dates, technologies,
+IDs, or evidence locations. A citation's evidence_locations must be copied
+verbatim from its retrieved experience; use an empty list if none exists.
+Return the final answer in the required JSON schema and in the user's language.
+"""
+
 ALL_PROMPTS = {
     "intake_interview": INTAKE_INTERVIEW_PROMPT_V1,
     "extraction": EXTRACTION_PROMPT_V1,
     "enrich": ENRICH_PROMPT_V1,
+    "evidence_brief_system": EVIDENCE_BRIEF_SYSTEM_PROMPT_V1,
 }
+
+# One version per template so checkpoints, run reports and evaluation
+# reports can attribute behaviour to the exact prompt text that produced
+# it ("which prompt was live when this eval ran?").
+PROMPT_VERSIONS = {
+    "intake_interview": "v1",
+    "extraction": "v1",
+    "enrich": "v1",
+    "evidence_brief_system": "v1",
+}
+
+
+def get_prompt(name: str) -> tuple[str, str]:
+    """(template, version) for a registered prompt; unknown names are errors."""
+    try:
+        return ALL_PROMPTS[name], PROMPT_VERSIONS[name]
+    except KeyError as exc:
+        raise KeyError(f"unknown prompt template: {name!r}") from exc
 
 
 def render_prompt(name: str, **variables: str) -> str:
     """Fill a named prompt template; unknown names/variables are errors."""
-    try:
-        template = ALL_PROMPTS[name]
-    except KeyError as exc:
-        raise KeyError(f"unknown prompt template: {name!r}") from exc
+    template, _version = get_prompt(name)
     return template.format(**variables)
