@@ -3,9 +3,10 @@
 English | [简体中文](README.md)
 
 [![CI](https://github.com/guomengjia618-dot/ExperienceOS/actions/workflows/ci.yml/badge.svg)](https://github.com/guomengjia618-dot/ExperienceOS/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/guomengjia618-dot/ExperienceOS/graph/badge.svg)](https://codecov.io/gh/guomengjia618-dot/ExperienceOS)
 ![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-[![Coverage](https://img.shields.io/badge/tests-435%20passed-brightgreen)](#engineering-quality)
+[![Coverage](https://img.shields.io/badge/tests-448%20passed-brightgreen)](#engineering-quality)
 
 > **Never forget what you have built.** Turn everything you have shipped
 > into structured, evidence-backed experience assets.
@@ -96,10 +97,12 @@ allowed to answer out of thin air.**
 - Every citation in the brief must correspond to evidence actually loaded
   during the run; a grounding failure pauses the run instead of emitting a
   hallucination;
-- Each round persists an **atomic checkpoint** — interruptions resume
-  exactly where they stopped;
-- Run reports are **sanitized** by default: latency, tokens, retries —
-  never prompts, never personal content.
+- Each round persists an **atomic checkpoint** (fsync-backed) that records
+  the prompt version — interruptions resume exactly where they stopped; a
+  final answer failing schema validation gets **one repair round** before
+  the run pauses;
+- Run reports are **sanitized** by default: latency, tokens, retries, prompt
+  versions — never prompt content, never personal data.
 
 **Testable AI quality** — measured, not vibes:
 
@@ -224,14 +227,21 @@ Full field reference in `docs/ARCHITECTURE.md`.
 
 ## Engineering quality
 
-- **435 passing tests**: domain, storage (FTS + migrations), connectors,
-  the AI workflow and its evaluation harness, web server end-to-end;
+- **448 passing tests (~90% coverage)**: domain, storage (FTS +
+  migrations), connectors, the AI workflow and its evaluation harness,
+  web server end-to-end;
+- **Crash safety & concurrent-write protection**: every write is fsynced
+  before the atomic replace, mutations serialize on a cross-process file
+  lock (CLI / API / workbench can run side by side), and a silently
+  stale FTS index rebuilds itself from the source of truth;
 - **CI matrix**: Ubuntu + Windows × Python 3.10/3.12/3.13, plus a wheel
-  packaging job that installs and exercises the artifact outside the repo;
+  packaging job that installs and exercises the artifact outside the
+  repo; coverage uploaded to Codecov;
 - **AST layering guard**: dependency direction enforced by test, not
   convention;
 - **AI eval suite**: deterministic regression + optional live-model runs,
-  reports sanitized by default;
+  prompt versions recorded on checkpoints and reports, reports sanitized
+  by default;
 - **Releases**: tag-driven workflow builds and smoke-tests artifacts,
   publishes GitHub Releases, and supports PyPI trusted publishing.
 

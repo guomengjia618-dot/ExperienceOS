@@ -3,9 +3,10 @@
 [English](README.en.md) | 简体中文
 
 [![CI](https://github.com/guomengjia618-dot/ExperienceOS/actions/workflows/ci.yml/badge.svg)](https://github.com/guomengjia618-dot/ExperienceOS/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/guomengjia618-dot/ExperienceOS/graph/badge.svg)](https://codecov.io/gh/guomengjia618-dot/ExperienceOS)
 ![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-[![Coverage](https://img.shields.io/badge/tests-405%20passed-brightgreen)](#工程质量)
+[![Coverage](https://img.shields.io/badge/tests-448%20passed-brightgreen)](#工程质量)
 
 > **Never forget what you have built.** 把你做过的每一件事，变成有证据支撑的经历资产。
 >
@@ -91,10 +92,11 @@ experienceos ai eval --live                    # 用真实模型跑同一套评�
   `get_experience` → `get_evidence_stats`；
 - 简报中的每一条**引用必须对应本次运行中实际读取到的证据位置**，
   引用不接地（grounding failure）会被判暂停而不是输出幻觉；
-- 每一轮对话都持久化为**原子检查点**，模型中断/网络失败后从保存的进度
-  精确恢复；
-- 运行报告默认**脱敏**：只有延迟、token、重试等运营指标，绝无 prompt
-  与个人内容。
+- 每一轮对话都持久化为**原子检查点**（fsync 背书），checkpoint 记录
+  prompt 版本，模型中断/网络失败后从保存的进度精确恢复；最终输出
+  schema 不合法时先做**一轮修复重试**，仍不合法才判暂停；
+- 运行报告默认**脱敏**：只有延迟、token、重试、prompt 版本等运营指标，
+  绝无 prompt 内容与个人数据。
 
 **可检验的 AI 质量**——不靠感觉，靠评测集：
 
@@ -213,12 +215,15 @@ flowchart TB
 
 ## 工程质量
 
-- **405 个测试全绿**：领域、存储（含 FTS 与迁移）、连接器、AI 工作流与
-  评测、web 服务端到端；
+- **448 个测试全绿（覆盖率约 90%）**：领域、存储（含 FTS 与迁移）、连接器、
+  AI 工作流与评测、web 服务端到端；
+- **崩溃安全与并发写保护**：所有落盘写入先 fsync 再原子替换，跨进程写入
+  由文件锁串行化（CLI / API / 工作台可并存），FTS 索引陈旧自动重建；
 - **CI 矩阵**：Ubuntu + Windows × Python 3.10/3.12/3.13，外加 wheel 打包
-  在仓库外安装验证（`ai eval` 从安装产物内运行）；
+  在仓库外安装验证（`ai eval` 从安装产物内运行），覆盖率上报 Codecov；
 - **AST 分层守卫**：依赖方向由测试而非约定保证；
-- **AI 评测集**：确定性回归 + 可选真模型评测，报告默认脱敏。
+- **AI 评测集**：确定性回归 + 可选真模型评测，checkpoint 与报告记录
+  prompt 版本，报告默认脱敏。
 
 ## 路线图
 
