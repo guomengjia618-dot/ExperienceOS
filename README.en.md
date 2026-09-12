@@ -4,6 +4,7 @@ English | [简体中文](README.md)
 
 [![CI](https://github.com/guomengjia618-dot/ExperienceOS/actions/workflows/ci.yml/badge.svg)](https://github.com/guomengjia618-dot/ExperienceOS/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/guomengjia618-dot/ExperienceOS/graph/badge.svg)](https://codecov.io/gh/guomengjia618-dot/ExperienceOS)
+[![PyPI](https://img.shields.io/pypi/v/experienceos)](https://pypi.org/project/experienceos/)
 ![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![Coverage](https://img.shields.io/badge/tests-448%20passed-brightgreen)](#engineering-quality)
@@ -46,9 +47,8 @@ receipts**.
 ### 0) See it work first: the offline workbench (zero configuration)
 
 ```bash
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e .
-experienceos web                                    # open http://127.0.0.1:8765
+pip install experienceos        # or from source: pip install -e .
+experienceos web                # open http://127.0.0.1:8765
 ```
 
 The workbench ships with an **offline demo mode**: 3 synthetic sample

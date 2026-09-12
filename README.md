@@ -4,6 +4,7 @@
 
 [![CI](https://github.com/guomengjia618-dot/ExperienceOS/actions/workflows/ci.yml/badge.svg)](https://github.com/guomengjia618-dot/ExperienceOS/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/guomengjia618-dot/ExperienceOS/graph/badge.svg)](https://codecov.io/gh/guomengjia618-dot/ExperienceOS)
+[![PyPI](https://img.shields.io/pypi/v/experienceos)](https://pypi.org/project/experienceos/)
 ![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![Coverage](https://img.shields.io/badge/tests-448%20passed-brightgreen)](#工程质量)
@@ -45,9 +46,8 @@ ExperienceOS 要做的事情只有一件：**把这些碎片转化为有证据�
 ### 0) 先看效果：离线工作台（无需任何配置）
 
 ```bash
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e .
-experienceos web                                    # 浏览器打开 http://127.0.0.1:8765
+pip install experienceos        # 或从源码安装:pip install -e .
+experienceos web                # 浏览器打开 http://127.0.0.1:8765
 ```
 
 工作台自带 **离线演示模式**：3 条合成示例经历 + 确定性回放模型，完整演示
