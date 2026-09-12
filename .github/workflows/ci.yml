@@ -41,6 +41,8 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # codecov tokenless (OIDC) upload
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
