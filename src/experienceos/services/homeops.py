@@ -18,10 +18,11 @@ from pathlib import Path
 
 from experienceos.core.errors import StorageError
 from experienceos.storage.fts import INDEX_FILENAME
+from experienceos.storage.locking import STORE_LOCK_FILENAME
 
 GIT_TIMEOUT_SECONDS = 60
 _EXCLUDED_DIR_NAMES = {".git", "backup", "drafts"}
-_GITIGNORE_ENTRIES = ("drafts/", INDEX_FILENAME)
+_GITIGNORE_ENTRIES = ("drafts/", INDEX_FILENAME, STORE_LOCK_FILENAME)
 
 
 @dataclass(frozen=True)

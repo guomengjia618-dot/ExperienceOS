@@ -7,8 +7,11 @@ the threshold at which we plan to introduce an FTS index.
 
 Design guarantees:
 
-- Atomic writes (temp file + ``os.replace``) so a crash never truncates
-  an existing record.
+- Atomic durable writes (temp file, fsync, ``os.replace``) so a crash
+  never truncates an existing record — or loses the new one.
+- Cross-process write locking: CLI, API and workbench processes may run
+  side by side; every mutation takes an exclusive lock so two writers
+  cannot silently drop each other's updates. Readers stay lock-free.
 - Corruption-tolerant listing: one broken file must not make the whole
   knowledge base unreadable; ``validate()`` reports problems instead.
 - ``updated_at`` is bumped on every save, transparently to callers.
@@ -18,14 +21,15 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from pathlib import Path
 
 from pydantic import ValidationError as PydanticValidationError
 
 from experienceos.core.errors import AmbiguousIdError, NotFoundError, StorageError
+from experienceos.core.fsutil import atomic_write_text
 from experienceos.core.models import SCHEMA_VERSION, Experience, utcnow
 from experienceos.storage.fts import remove_experience, upsert_experience
+from experienceos.storage.locking import STORE_LOCK_FILENAME, exclusive_lock
 from experienceos.storage.migrations import needs_migration, run_migrations
 
 logger = logging.getLogger("experienceos.storage")
@@ -45,6 +49,7 @@ class ExperienceStore:
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
         self.experiences_dir = self.root / "experiences"
+        self.lock_path = self.root / STORE_LOCK_FILENAME
         # stat-keyed memoization for repeated listings (every API request,
         # every CLI command re-reads the whole library otherwise). Each read
         # re-stats the file first, so an external edit invalidates itself;
@@ -66,26 +71,24 @@ class ExperienceStore:
     def save(self, experience: Experience) -> Path:
         """Persist an experience atomically and refresh ``updated_at``."""
         experience.updated_at = utcnow()
-        self.experiences_dir.mkdir(parents=True, exist_ok=True)
-        target = self.path_of(experience.id)
-        tmp = target.with_suffix(".json.tmp")
-        tmp.write_text(
-            experience.model_dump_json(indent=2) + "\n", encoding="utf-8"
-        )
-        os.replace(tmp, target)
-        self._cache_update(target, experience)
-        # best-effort: keeps the rebuildable search index from going stale
-        upsert_experience(self.root, experience)
+        with exclusive_lock(self.lock_path):
+            self.experiences_dir.mkdir(parents=True, exist_ok=True)
+            target = self.path_of(experience.id)
+            atomic_write_text(target, experience.model_dump_json(indent=2) + "\n")
+            self._cache_update(target, experience)
+            # best-effort: keeps the rebuildable search index from going stale
+            upsert_experience(self.root, experience)
         return target
 
     def delete(self, experience_id: str) -> bool:
         """Remove a record. Returns False if it did not exist."""
-        path = self.path_of(experience_id)
-        if not path.exists():
-            return False
-        path.unlink()
-        self._cache.pop(path.name, None)
-        remove_experience(self.root, experience_id)
+        with exclusive_lock(self.lock_path):
+            path = self.path_of(experience_id)
+            if not path.exists():
+                return False
+            path.unlink()
+            self._cache.pop(path.name, None)
+            remove_experience(self.root, experience_id)
         return True
 
     # -- read ----------------------------------------------------------------
@@ -162,16 +165,17 @@ class ExperienceStore:
         if not needs_migration(data):
             return data
         assert isinstance(data, dict)  # needs_migration guarantees this
-        self.backup_dir.mkdir(parents=True, exist_ok=True)
-        stamp = utcnow().strftime("%Y%m%d-%H%M%S")
-        backup = self.backup_dir / f"{path.stem}-{stamp}.json"
-        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-        migrated, applied = run_migrations(data)
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(migrated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
-        os.replace(tmp, path)
+        with exclusive_lock(self.lock_path):
+            self.backup_dir.mkdir(parents=True, exist_ok=True)
+            stamp = utcnow().strftime("%Y%m%d-%H%M%S")
+            backup = self.backup_dir / f"{path.stem}-{stamp}.json"
+            atomic_write_text(
+                backup, path.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            migrated, applied = run_migrations(data)
+            atomic_write_text(
+                path, json.dumps(migrated, ensure_ascii=False, indent=2) + "\n"
+            )
         logger.info("migrated %s to schema v%s", path.name, applied[-1])
         return migrated
 
