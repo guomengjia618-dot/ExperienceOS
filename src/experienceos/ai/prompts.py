@@ -94,11 +94,20 @@ verbatim from its retrieved experience; use an empty list if none exists.
 Return the final answer in the required JSON schema and in the user's language.
 """
 
+# v2: backends such as GLM ignore response_format's json_schema, so the
+# exact schema is appended to the system message by the workflow (the
+# prompt text ends with a marker telling the model what follows).
+EVIDENCE_BRIEF_SYSTEM_PROMPT_V2 = EVIDENCE_BRIEF_SYSTEM_PROMPT_V1 + (
+    "The final answer must be a single JSON object that validates against "
+    "the exact JSON schema printed after this paragraph — copy its field "
+    "names verbatim.\n"
+)
+
 ALL_PROMPTS = {
     "intake_interview": INTAKE_INTERVIEW_PROMPT_V1,
     "extraction": EXTRACTION_PROMPT_V1,
     "enrich": ENRICH_PROMPT_V1,
-    "evidence_brief_system": EVIDENCE_BRIEF_SYSTEM_PROMPT_V1,
+    "evidence_brief_system": EVIDENCE_BRIEF_SYSTEM_PROMPT_V2,
 }
 
 # One version per template so checkpoints, run reports and evaluation
@@ -108,7 +117,7 @@ PROMPT_VERSIONS = {
     "intake_interview": "v1",
     "extraction": "v1",
     "enrich": "v1",
-    "evidence_brief_system": "v1",
+    "evidence_brief_system": "v2",
 }
 
 

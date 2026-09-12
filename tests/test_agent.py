@@ -258,7 +258,9 @@ def test_recorded_eval_dataset_passes(tmp_path) -> None:
     saved = save_evaluation_report(report, tmp_path / "eval-report.json")
     saved_text = saved.read_text(encoding="utf-8")
     assert str(tmp_path) not in saved_text
-    assert "<redacted:tool_argument_error>" in saved_text
+    # the paused guard case must surface redacted, never raw, errors
+    assert "<redacted:schema_validation_error>" in saved_text
+    assert "invalid arguments" not in saved_text
 
 
 def test_eval_dataset_rejects_unsafe_and_duplicate_case_ids(tmp_path) -> None:
@@ -368,3 +370,50 @@ def test_second_invalid_answer_still_pauses(home, store, make_experience) -> Non
 
     with pytest.raises(WorkflowError, match="schema validation"):
         workflow.start("Summarize")
+
+
+def test_tool_error_is_fed_back_for_self_correction(
+    home, store, make_experience
+) -> None:
+    """A strict-tool rejection must not pause the run: the error goes back
+    as the tool result and a compliant model self-corrects to completion."""
+    exp = make_experience(
+        evidence=[{"kind": "repo", "location": "github.com/example/search"}]
+    )
+    store.save(exp)
+    bad_call = ModelResponse(
+        tool_calls=(ToolCall("s1", "search_experiences", {"query": "x", "limit": 0}),)
+    )
+    provider = RecordedProvider([bad_call, grounded_get(exp), final_brief(exp)])
+    workflow = EvidenceBriefWorkflow(
+        provider=provider,
+        tools=ExperienceToolRegistry(store),
+        checkpoints=WorkflowCheckpointStore(home),
+    )
+
+    state = workflow.start("Summarize")
+
+    assert state.status == "completed"
+    error_events = [event for event in state.tool_events if '"error"' in event.result]
+    assert error_events and error_events[0].name == "search_experiences"
+    tool_messages = [m for m in state.messages if m.get("role") == "tool"]
+    assert any('"error"' in str(m.get("content")) for m in tool_messages)
+
+
+def test_system_message_carries_the_output_schema(home, store, make_experience) -> None:
+    exp = make_experience(
+        evidence=[{"kind": "repo", "location": "github.com/example/search"}]
+    )
+    store.save(exp)
+    checkpoints = WorkflowCheckpointStore(home)
+    workflow = EvidenceBriefWorkflow(
+        provider=RecordedProvider([grounded_get(exp), final_brief(exp)]),
+        tools=ExperienceToolRegistry(store),
+        checkpoints=checkpoints,
+    )
+
+    state = workflow.start("Summarize")
+
+    system_message = state.messages[0]
+    assert system_message["role"] == "system"
+    assert '"answer"' in system_message["content"]  # EvidenceBrief field name

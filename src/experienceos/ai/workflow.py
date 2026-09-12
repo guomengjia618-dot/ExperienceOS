@@ -15,7 +15,12 @@ from experienceos.ai.prompts import get_prompt
 from experienceos.ai.provider import LLMProvider, Message, ToolCall
 from experienceos.ai.schemas import EvidenceBrief
 from experienceos.ai.tools import ExperienceToolRegistry
-from experienceos.core.errors import AIProviderError, StorageError, WorkflowError
+from experienceos.core.errors import (
+    AIProviderError,
+    StorageError,
+    ToolExecutionError,
+    WorkflowError,
+)
 from experienceos.core.fsutil import atomic_write_text
 from experienceos.core.models import utcnow
 from experienceos.core.ulid import new_ulid
@@ -23,6 +28,19 @@ from experienceos.core.ulid import new_ulid
 _WORKFLOW_ID_RE = re.compile(r"^wf_[0-9A-HJKMNP-TV-Z]{26}$")
 
 _SYSTEM_PROMPT_NAME = "evidence_brief_system"
+
+
+def _system_message() -> Message:
+    """System prompt with the final-answer schema spelled out inline.
+
+    response_format's json_schema is authoritative on OpenAI, but some
+    compatible backends (GLM among them) silently ignore it and then
+    invent their own output shape — so the exact schema travels in the
+    prompt text as well, and the prompt version records that.
+    """
+    system_prompt, _version = get_prompt(_SYSTEM_PROMPT_NAME)
+    schema_text = json.dumps(EvidenceBrief.model_json_schema())
+    return Message(role="system", content=f"{system_prompt}{schema_text}")
 
 
 class ToolEvent(BaseModel):
@@ -103,7 +121,6 @@ class EvidenceBriefWorkflow:
     def start(self, question: str) -> WorkflowState:
         if not question.strip():
             raise WorkflowError("question must not be empty")
-        system_prompt, system_prompt_version = get_prompt(_SYSTEM_PROMPT_NAME)
         now = utcnow()
         state = WorkflowState(
             workflow_id=f"wf_{new_ulid()}",
@@ -111,9 +128,9 @@ class EvidenceBriefWorkflow:
             status="running",
             provider=self.provider.name,
             model=str(getattr(self.provider, "model", self.provider.name)),
-            prompt_versions={_SYSTEM_PROMPT_NAME: system_prompt_version},
+            prompt_versions={_SYSTEM_PROMPT_NAME: get_prompt(_SYSTEM_PROMPT_NAME)[1]},
             messages=[
-                Message(role="system", content=system_prompt).to_dict(),
+                _system_message().to_dict(),
                 Message(role="user", content=question.strip()).to_dict(),
             ],
             created_at=now,
@@ -206,7 +223,9 @@ class EvidenceBriefWorkflow:
             f"{validation_error}\n\n"
             "Return the corrected final answer as a single JSON object that "
             "matches the required schema. Keep the same facts and citations; "
-            "fix only the structure. Do not call tools."
+            "fix only the structure. Do not call tools.\n"
+            "The exact required schema:\n"
+            f"{json.dumps(EvidenceBrief.model_json_schema())}"
         )
         state.messages.append(Message(role="user", content=repair_request).to_dict())
         self.checkpoints.save(state)
@@ -250,7 +269,14 @@ class EvidenceBriefWorkflow:
                     seen_ids.add(call.id)
 
         for call in pending:
-            result = self.tools.execute(call.name, call.arguments)
+            try:
+                result = self.tools.execute(call.name, call.arguments)
+            except ToolExecutionError as exc:
+                # Strict tool schemas reject bad arguments; feeding the
+                # error back as the tool result lets the model correct
+                # itself instead of pausing the whole run. The failure is
+                # still recorded in tool_events for full transparency.
+                result = json.dumps({"error": str(exc)})
             state.messages.append(
                 Message(
                     role="tool",
@@ -284,8 +310,8 @@ class EvidenceBriefWorkflow:
             try:
                 record = json.loads(event.result)
                 retrieved[str(record["id"])] = record
-            except (json.JSONDecodeError, KeyError, TypeError) as exc:
-                raise WorkflowError("get_experience returned an invalid record") from exc
+            except (json.JSONDecodeError, KeyError, TypeError):
+                continue  # a failed read (fed-back tool error) grounds nothing
 
         for citation in output.citations:
             record = retrieved.get(citation.experience_id)
