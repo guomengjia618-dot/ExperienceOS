@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-09-12
+
+The workbench grows its management surface: records can now be created,
+edited, promoted and deleted visually — no terminal required.
+
+### Added
+
+- Visual record management in the live workbench: a form editor (title,
+  type, status, period, STAR fields, technology, tags, multi-row
+  evidence), draft promotion, delete with confirmation, and one-click
+  Markdown / HTML export downloads. Demo data stays a read-only
+  showcase; mutations require live mode behind the existing
+  Host/Origin/custom-header guards, and the API tests pin all of it.
+
 ## [0.7.3] - 2026-09-12
 
 Live-model hardening: the first real-model run (GLM glm-4.7) surfaced
@@ -294,7 +308,8 @@ First public foundation release (Milestone 0).
 - CI workflow (GitHub Actions: ruff + pytest on Python 3.10-3.13,
   Ubuntu + Windows).
 
-[Unreleased]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.3...HEAD
+[Unreleased]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.4...HEAD
+[0.7.4]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.3...v0.7.4
 [0.7.3]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.0...v0.7.1

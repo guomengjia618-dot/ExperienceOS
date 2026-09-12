@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
+import tempfile
 import threading
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,13 +22,21 @@ from experienceos.ai.reporting import build_run_report, save_run_report
 from experienceos.ai.tools import ExperienceToolRegistry
 from experienceos.ai.workflow import EvidenceBriefWorkflow, WorkflowCheckpointStore, WorkflowState
 from experienceos.config import load_config
-from experienceos.core.models import utcnow
+from experienceos.core.errors import ExperienceOSError, ExportError, NotFoundError
+from experienceos.core.models import UNDATED_START, Experience, utcnow
 from experienceos.core.ulid import new_ulid
+from experienceos.exporters import default_exporter_registry
+from experienceos.exporters.base import ExportOptions
 from experienceos.storage import ExperienceStore
 from experienceos.web.demo import DEMO_QUESTION, WorkbenchDemoProvider, seed_demo
 
 _RUN_ID = re.compile(r"^run_[0-9A-HJKMNP-TV-Z]{26}$")
 _STATIC = Path(__file__).parent / "static"
+_MIME_BY_SUFFIX = {
+    ".md": "text/markdown; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+}
 
 
 class RequestError(Exception):
@@ -40,6 +50,67 @@ class StartRequest(BaseModel):
     mode: Literal["demo", "live"] = "demo"
     question: str = Field(default=DEMO_QUESTION, min_length=1, max_length=4000)
     simulate_failure: StrictBool = False
+
+
+class EvidenceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str = "other"
+    location: str = Field(min_length=1, max_length=2000)
+    description: str = Field(default="", max_length=2000)
+
+
+class PeriodIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start: str | None = None
+    end: str | None = None
+
+
+class RecordUpsert(BaseModel):
+    """The visually editable surface of a record. Identity, provenance and
+    timestamps are system-owned and never accepted from the form."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=200)
+    type: str = "personal"
+    status: Literal["draft", "active", "archived"] = "active"
+    period: PeriodIn = PeriodIn()
+    context: str = Field(default="", max_length=4000)
+    role: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=8000)
+    technology: list[str] = Field(default_factory=list, max_length=100)
+    contribution: list[str] = Field(default_factory=list, max_length=100)
+    challenge: list[str] = Field(default_factory=list, max_length=100)
+    solution: list[str] = Field(default_factory=list, max_length=100)
+    result: list[str] = Field(default_factory=list, max_length=100)
+    reflection: str = Field(default="", max_length=8000)
+    tags: list[str] = Field(default_factory=list, max_length=50)
+    evidence: list[EvidenceIn] = Field(default_factory=list, max_length=100)
+
+    def to_domain(self) -> dict[str, Any]:
+        period = dict(self.period.model_dump())
+        period.setdefault("start", None)
+        if not period["start"]:
+            period["start"] = UNDATED_START
+        return {
+            "title": self.title,
+            "type": self.type,
+            "status": self.status,
+            "period": period,
+            "context": self.context,
+            "role": self.role,
+            "description": self.description,
+            "technology": self.technology,
+            "contribution": self.contribution,
+            "challenge": self.challenge,
+            "solution": self.solution,
+            "result": self.result,
+            "reflection": self.reflection,
+            "tags": self.tags,
+            "evidence": [e.model_dump() for e in self.evidence],
+        }
 
 
 class ObservedCheckpoints(WorkflowCheckpointStore):
@@ -73,6 +144,98 @@ class Workbench:
         if mode not in {"demo", "live"}:
             raise RequestError("请选择离线演示或真实模型。")
         return ExperienceStore(self.demo_home if mode == "demo" else self.home)
+
+    # -- record management (visual surface of the CLI's human-in-the-loop) --
+
+    def _local_store(self, mode: str) -> ExperienceStore:
+        if mode != "live":
+            raise RequestError(
+                "演示数据是合成示例，只读。切换到「在线」即可管理真实经历。", 403
+            )
+        return self.store("live")
+
+    def create_record(self, mode: str, data: RecordUpsert) -> dict[str, Any]:
+        store = self._local_store(mode)
+        fields = data.to_domain()
+        fields["source"] = {"origin": "manual", "created_by": "user"}
+        try:
+            experience = Experience.new(**fields)
+        except (ValidationError, ValueError) as exc:
+            raise RequestError(self._validation_message(exc)) from exc
+        store.save(experience)
+        return experience.model_dump(mode="json")
+
+    def update_record(self, mode: str, record_id: str, data: RecordUpsert) -> dict[str, Any]:
+        store = self._local_store(mode)
+        existing = self._load(store, record_id)
+        merged = existing.model_dump(mode="json")
+        merged.update(data.to_domain())
+        merged["id"] = existing.id
+        merged["source"] = existing.source.model_dump(mode="json")
+        try:
+            updated = Experience.model_validate(merged)
+        except (ValidationError, ValueError) as exc:
+            raise RequestError(self._validation_message(exc)) from exc
+        store.save(updated)
+        return updated.model_dump(mode="json")
+
+    def delete_record(self, mode: str, record_id: str) -> None:
+        store = self._local_store(mode)
+        if not store.delete(self._resolve(store, record_id)):
+            raise RequestError("找不到这条经历。", 404)
+
+    def change_status(self, mode: str, record_id: str, status: str) -> None:
+        store = self._local_store(mode)
+        existing = self._load(store, record_id)
+        merged = existing.model_dump(mode="json")
+        merged["status"] = status
+        try:
+            updated = Experience.model_validate(merged)
+        except (ValidationError, ValueError) as exc:
+            raise RequestError(self._validation_message(exc)) from exc
+        store.save(updated)
+
+    @staticmethod
+    def _resolve(store: ExperienceStore, record_id: str) -> str:
+        try:
+            return store.resolve(record_id)
+        except NotFoundError as exc:
+            raise RequestError("找不到这条经历。", 404) from exc
+
+    @classmethod
+    def _load(cls, store: ExperienceStore, record_id: str) -> Experience:
+        try:
+            return store.load(cls._resolve(store, record_id))
+        except ExperienceOSError as exc:
+            raise RequestError(
+                "记录文件无法读取，请先运行 experienceos validate 检查。", 409
+            ) from exc
+
+    def export(self, mode: str, name: str) -> tuple[bytes, str, str]:
+        """Render an export artifact for download; active records only —
+        drafts never leak, matching the CLI's default."""
+        self._local_store(mode)
+        exporter = default_exporter_registry.get(name)
+        records = [r for r in self.store("live").list_all() if r.status.value == "active"]
+        suffix = f".{exporter.suffix}"
+        fd, raw = tempfile.mkstemp(suffix=suffix)
+        os.close(fd)
+        try:
+            target = exporter.export(records, Path(raw), ExportOptions())
+            body = target.read_bytes()
+        finally:
+            with contextlib.suppress(OSError):  # best-effort cleanup
+                os.unlink(raw)
+        disposition = f"experienceos-export-{name}{suffix}"
+        return body, _MIME_BY_SUFFIX.get(suffix, "application/octet-stream"), disposition
+
+    @staticmethod
+    def _validation_message(exc: Exception) -> str:
+        if isinstance(exc, ValidationError):
+            first = exc.errors()[0]
+            location = ".".join(str(part) for part in first.get("loc", ()) if part != "__root__")
+            return f"字段不合法：{location or '表单'} — {first.get('msg', '')}"
+        return "表单内容不合法，请检查后重试。"
 
     def configuration(self) -> dict[str, Any]:
         config = load_config(self.home).ai
@@ -290,6 +453,29 @@ def make_server(workbench: Workbench, port: int = 8765) -> ThreadingHTTPServer:
                     return self._json(
                         [r.model_dump(mode="json") for r in workbench.store(mode).list_all()]
                     )
+                if path == "/api/export":
+                    query = parse_qs(parsed.query)
+                    name = (query.get("name") or ["markdown"])[0]
+                    mode = (query.get("mode") or ["live"])[0]
+                    try:
+                        body, mime, filename = workbench.export(mode, name)
+                    except ExportError as exc:
+                        raise RequestError(
+                            "没有可导出的记录（默认只导出「正式」状态的经历）。"
+                            "先新增或转正一条经历再导出。",
+                            400,
+                        ) from exc
+                    self.send_response(200)
+                    self.send_header("Content-Type", mime)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header(
+                        "Content-Disposition", f'attachment; filename="{filename}"'
+                    )
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
                 if path == "/api/runs":
                     return self._json(workbench.history())
                 if path.startswith("/api/runs/"):
@@ -300,16 +486,43 @@ def make_server(workbench: Workbench, port: int = 8765) -> ThreadingHTTPServer:
             except Exception:
                 self._json({"error": "无法读取本地数据，请检查配置与记录文件。"}, 500)
 
+        def _read_json(self) -> dict[str, Any]:
+            if self.headers.get_content_type() != "application/json":
+                raise RequestError("需要 JSON 请求。", 415)
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 < length <= 32768:
+                raise RequestError("请求为空或超过大小限制。", 413)
+            data = json.loads(self.rfile.read(length))
+            if not isinstance(data, dict):
+                raise RequestError("请求参数不正确。", 400)
+            return data
+
         def do_POST(self) -> None:
             try:
                 self._guard(api=True)
-                if self.headers.get_content_type() != "application/json":
-                    raise RequestError("需要 JSON 请求。", 415)
-                length = int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= 32768:
-                    raise RequestError("请求为空或超过大小限制。", 413)
-                data = json.loads(self.rfile.read(length))
+                data = self._read_json()
                 path = urlsplit(self.path).path
+                if path == "/api/experiences":
+                    mode = parse_qs(urlsplit(self.path).query).get("mode", ["live"])[0]
+                    result = workbench.create_record(
+                        mode, RecordUpsert.model_validate(data)
+                    )
+                    self._json(result, 201)
+                    return
+                if path.startswith("/api/experiences/") and path.endswith("/status"):
+                    if data.keys() != {"status"} or data["status"] not in {
+                        "draft",
+                        "active",
+                        "archived",
+                    }:
+                        raise RequestError("状态不合法。", 400)
+                    workbench.change_status(
+                        parse_qs(urlsplit(self.path).query).get("mode", ["live"])[0],
+                        path[len("/api/experiences/") : -len("/status")],
+                        data["status"],
+                    )
+                    self._json({"ok": True})
+                    return
                 if path == "/api/runs":
                     result = workbench.start(StartRequest.model_validate(data))
                 elif path.startswith("/api/runs/") and path.endswith("/resume"):
@@ -322,7 +535,44 @@ def make_server(workbench: Workbench, port: int = 8765) -> ThreadingHTTPServer:
             except RequestError as exc:
                 self._json({"error": str(exc)}, exc.status)
             except (ValidationError, ValueError, UnicodeError):
-                self._json({"error": "请求参数不正确。问题须为 1–4000 个字符。"}, 400)
+                self._json({"error": "请求参数不正确。请检查表单内容。"}, 400)
+            except Exception:
+                self._json({"error": "操作未完成，请检查本地配置后重试。"}, 500)
+
+        def do_PUT(self) -> None:
+            try:
+                self._guard(api=True)
+                data = self._read_json()
+                path = urlsplit(self.path).path
+                if path.startswith("/api/experiences/"):
+                    mode = parse_qs(urlsplit(self.path).query).get("mode", ["live"])[0]
+                    result = workbench.update_record(
+                        mode,
+                        path.removeprefix("/api/experiences/"),
+                        RecordUpsert.model_validate(data),
+                    )
+                    return self._json(result)
+                raise RequestError("操作不存在。", 404)
+            except RequestError as exc:
+                self._json({"error": str(exc)}, exc.status)
+            except (ValidationError, ValueError, UnicodeError):
+                self._json({"error": "请求参数不正确。请检查表单内容。"}, 400)
+            except Exception:
+                self._json({"error": "操作未完成，请检查本地配置后重试。"}, 500)
+
+        def do_DELETE(self) -> None:
+            try:
+                self._guard(api=True)
+                parsed = urlsplit(self.path)
+                if parsed.path.startswith("/api/experiences/"):
+                    mode = parse_qs(parsed.query).get("mode", ["live"])[0]
+                    workbench.delete_record(
+                        mode, parsed.path.removeprefix("/api/experiences/")
+                    )
+                    return self._json({"ok": True})
+                raise RequestError("操作不存在。", 404)
+            except RequestError as exc:
+                self._json({"error": str(exc)}, exc.status)
             except Exception:
                 self._json({"error": "操作未完成，请检查本地配置后重试。"}, 500)
 

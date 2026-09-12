@@ -135,12 +135,12 @@ def http_workbench(tmp_path):
     thread.join(timeout=2)
 
 
-def request(base, path, data=None, headers=None):
+def request(base, path, data=None, headers=None, method=None):
     values = {"X-ExperienceOS": "workbench", **(headers or {})}
     body = None if data is None else json.dumps(data).encode()
     if body is not None:
         values.setdefault("Content-Type", "application/json")
-    req = Request(base + path, data=body, headers=values)
+    req = Request(base + path, data=body, headers=values, method=method)
     try:
         response = urlopen(req, timeout=3)
     except HTTPError as error:
@@ -199,3 +199,112 @@ def test_cli_web_reuses_selected_home(tmp_path, monkeypatch):
     result = CliRunner().invoke(app, ["--home", str(tmp_path), "web", "--port", "18765"])
     assert result.exit_code == 0, result.output
     assert calls == [(tmp_path, 18765)]
+
+
+def test_visual_record_crud_export_and_guards(http_workbench):
+    _, base = http_workbench
+    payload = {
+        "title": "Campus Search Engine",
+        "type": "course_project",
+        "status": "active",
+        "period": {"start": "2023-01", "end": "2023-06"},
+        "role": "Search lead",
+        "description": "A small search engine",
+        "technology": ["Python", "Whoosh"],
+        "contribution": ["Designed the inverted index pipeline"],
+        "result": ["92% top-10 hit rate"],
+        "tags": ["ir"],
+        "evidence": [{"kind": "repo", "location": "github.com/you/campus-search"}],
+    }
+    status, _, body = request(base, "/api/experiences?mode=live", payload)
+    assert status == 201
+    created = json.loads(body)
+    record_id = created["id"]
+    assert created["source"]["created_by"] == "user"
+    assert created["period"]["start"] == "2023-01"
+    assert created["status"] == "active"
+
+    status, _, body = request(base, "/api/experiences?mode=live")
+    assert any(r["id"] == record_id for r in json.loads(body))
+
+    # demo data is a read-only synthetic showcase
+    status, _, body = request(base, "/api/experiences?mode=demo", payload)
+    assert status == 403
+    status, _, _ = request(base, "/api/export?name=markdown&mode=demo")
+    assert status == 403
+
+    # invalid form -> friendly 400
+    status, _, _ = request(base, "/api/experiences?mode=live", {"title": ""})
+    assert status == 400
+
+    # update (full id and short prefix both resolve)
+    payload["title"] = "Renamed engine"
+    status, _, body = request(
+        base, f"/api/experiences/{record_id}?mode=live", payload, method="PUT"
+    )
+    assert status == 200 and json.loads(body)["title"] == "Renamed engine"
+    status, _, body = request(
+        base, f"/api/experiences/{record_id[:12]}?mode=live", payload, method="PUT"
+    )
+    assert status == 200
+
+    # export while the record is active: markdown + html both carry it
+    status, headers, body = request(base, "/api/export?name=markdown&mode=live")
+    assert status == 200
+    assert "attachment" in headers.get("Content-Disposition", "")
+    assert b"Renamed engine" in body
+    status, _, body2 = request(base, "/api/export?name=html&mode=live")
+    assert status == 200 and b"Renamed engine" in body2
+    status, _, _ = request(base, "/api/export?name=nope&mode=live")
+    assert status in (400, 404)
+
+    # status flip endpoint
+    status, _, _ = request(
+        base,
+        f"/api/experiences/{record_id}/status?mode=live",
+        {"status": "archived"},
+    )
+    assert status == 200
+    status, _, body = request(base, "/api/experiences?mode=live")
+    record = next(r for r in json.loads(body) if r["id"] == record_id)
+    assert record["status"] == "archived"
+
+    # archived records do not leak into exports: a friendly, explicit refusal
+    status, _, body = request(base, "/api/export?name=markdown&mode=live")
+    assert status == 400 and "没有可导出" in json.loads(body)["error"]
+
+    # delete is final and prefix-resolvable
+    status, _, _ = request(
+        base, f"/api/experiences/{record_id[:12]}?mode=live", method="DELETE"
+    )
+    assert status == 200
+    status, _, _ = request(
+        base, f"/api/experiences/{record_id}?mode=live", method="DELETE"
+    )
+    assert status == 404
+
+
+def test_mutating_endpoints_require_workbench_header(http_workbench):
+    _, base = http_workbench
+    status, _, _ = request(
+        base,
+        "/api/experiences?mode=live",
+        {"title": "x"},
+        headers={"X-ExperienceOS": "forged"},
+    )
+    assert status == 403
+    status, _, _ = request(
+        base,
+        "/api/experiences/exp_00000000000000000000000000?mode=live",
+        method="DELETE",
+        headers={"X-ExperienceOS": "forged"},
+    )
+    assert status == 403
+    # deleting a record that does not exist -> 404 (with the proper header)
+    status, _, _ = request(
+        base,
+        "/api/experiences/exp_00000000000000000000000000?mode=live",
+        method="DELETE",
+    )
+    assert status == 404
+    # exporting an empty selection is a friendly 400, not a crash

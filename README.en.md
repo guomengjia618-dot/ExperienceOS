@@ -57,6 +57,11 @@ forensics loop — search experiences → read each one → evidence statistics
 → an evidence brief with citations. You can simulate a model outage and
 resume from checkpoints. No network, no access to your real data.
 
+Switch to **live mode to manage real experiences visually**: form-based
+create / edit, draft promotion, delete, and one-click Markdown / HTML
+export — the trust boundary is unchanged: only someone at this machine
+can touch this data.
+
 ### 1) Record real experiences
 
 ```bash
