@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-09-12
+
+First PyPI-distributed release: `pip install experienceos` now works,
+via the tag-driven trusted-publishing pipeline.
+
+### Changed
+
+- README quickstart installs from PyPI (`pip install experienceos`);
+  a PyPI version badge joins the badge row.
+
+### Fixed
+
+- Eval dataset manifest pins the LF digest: the sha256 was computed
+  over CRLF working-tree bytes, which never matches the `eol=lf`
+  checkouts every CI platform uses.
+- Codecov upload works: the coverage job now grants the
+  `id-token: write` permission the OIDC tokenless upload needs.
+
 ## [0.7.1] - 2026-09-12
 
 Durability, index resilience and AI-prompt governance: closing the gap
@@ -243,7 +261,8 @@ First public foundation release (Milestone 0).
 - CI workflow (GitHub Actions: ruff + pytest on Python 3.10-3.13,
   Ubuntu + Windows).
 
-[Unreleased]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.5.0...v0.6.0
