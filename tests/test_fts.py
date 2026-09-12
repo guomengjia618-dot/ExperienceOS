@@ -15,6 +15,7 @@ from experienceos.storage.fts import (
     build_index,
     delete_index,
     fts_search,
+    index_doc_count,
     index_exists,
     index_path,
 )
@@ -219,3 +220,50 @@ class TestCli:
         assert result.exit_code == 0, output
         assert "Indexed 2 record(s)" in output
         assert index_path(cli_env).exists()
+
+
+class TestIndexResilience:
+    def test_index_doc_count_tracks_rows(
+        self, cli_env, small_library: ExperienceStore
+    ) -> None:
+        assert index_doc_count(cli_env) is None  # no index yet
+        build_index(cli_env, small_library.list_all())
+        assert index_doc_count(cli_env) == 2
+
+    def test_busy_timeout_is_configured(
+        self, cli_env, small_library: ExperienceStore
+    ) -> None:
+        from experienceos.storage.fts import BUSY_TIMEOUT_MS, _connect
+
+        build_index(cli_env, small_library.list_all())
+        connection = _connect(index_path(cli_env))
+        try:
+            timeout = connection.execute("PRAGMA busy_timeout").fetchone()[0]
+        finally:
+            connection.close()
+        assert timeout == BUSY_TIMEOUT_MS
+
+    def test_stale_index_is_rebuilt_on_query(
+        self, cli_env, small_library: ExperienceStore, make_experience, monkeypatch
+    ) -> None:
+        """A silently dropped upsert must not hide records from search."""
+        import sqlite3
+
+        monkeypatch.setenv("EXPERIENCEOS_FTS_THRESHOLD", "1")
+        build_index(cli_env, small_library.list_all())
+        third = make_experience(title="Data Platform", description="streaming etl")
+        small_library.save(third)
+        # simulate the failure mode: the best-effort upsert was lost
+        connection = sqlite3.connect(index_path(cli_env))
+        try:
+            connection.execute("DELETE FROM experiences WHERE id = ?", (third.id,))
+            connection.commit()
+        finally:
+            connection.close()
+        assert index_doc_count(cli_env) == 2
+
+        results = run_query(
+            small_library, SearchQuery(text="platform")
+        )
+        assert [exp.id for exp in results] == [third.id]
+        assert index_doc_count(cli_env) == 3  # rebuilt in the process

@@ -8,7 +8,9 @@ prompt; they raise ``ExperienceOSError`` subclasses and return data.
 
 from __future__ import annotations
 
+import logging
 import os
+import sqlite3
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
@@ -23,6 +25,8 @@ from experienceos.storage import fts as fts_module
 from experienceos.storage.store import LoadIssue
 
 THRESHOLD_ENV = "EXPERIENCEOS_FTS_THRESHOLD"
+
+logger = logging.getLogger("experienceos.services")
 
 
 def list_experiences(store: ExperienceStore, query: SearchQuery) -> list[Experience]:
@@ -53,6 +57,7 @@ def query_results(store: ExperienceStore, query: SearchQuery) -> list[SearchResu
     """
     experiences = store.list_all()
     if query.text and _fts_worth_it(store.root, len(experiences)):
+        _refresh_stale_index(store.root, experiences)
         ids = set(fts_module.fts_search(store.root, query.text))
         if ids:
             by_id = {exp.id: exp for exp in experiences}
@@ -76,6 +81,30 @@ def _fts_worth_it(home: Any, record_count: int) -> bool:
     if threshold <= 0 or record_count < threshold:
         return False
     return fts_module.index_exists(home)
+
+
+def _refresh_stale_index(home: Any, experiences: list[Experience]) -> None:
+    """Rebuild the index when it no longer matches the record files.
+
+    The index is a rebuildable cache. Its row count drifting from the
+    file count means best-effort upserts failed (a lock conflict, a
+    crash) and the index now silently misses records — rebuilding from
+    the source of truth beats degrading every search until someone
+    notices. A rebuild failure keeps the old behaviour: FTS hits narrow
+    candidates, the in-memory engine still decides correctness.
+    """
+    recorded = fts_module.index_doc_count(home)
+    if recorded == len(experiences):
+        return
+    logger.info(
+        "search index is stale (%s rows vs %s records); rebuilding",
+        recorded,
+        len(experiences),
+    )
+    try:
+        fts_module.build_index(home, experiences)
+    except sqlite3.Error as exc:  # pragma: no cover - busy timeout exhausted
+        logger.warning("could not rebuild stale search index: %s", exc)
 
 
 def summarize(store: ExperienceStore) -> dict[str, Any]:
