@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "experienceos"
-version = "0.7.0"
+version = "0.7.1"
 description = "ExperienceOS - an open-source personal experience operating system. Never forget what you have built."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -18,7 +18,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Office/Business",

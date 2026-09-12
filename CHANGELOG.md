@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-12
+
+Durability, index resilience and AI-prompt governance: closing the gap
+between "atomic" as an aspiration and as a verifiable property.
+
+### Added
+
+- Durable atomic writes: records, workflow checkpoints and shareable
+  reports are fsynced before `os.replace`, and the rename itself is
+  persisted on POSIX — a crash can no longer truncate *or* lose a write.
+- Cross-process write locking: the CLI, REST API and workbench may run
+  side by side; every store mutation holds an exclusive lock file lock
+  (Windows `msvcrt` / POSIX `flock`) so two writers cannot silently drop
+  each other's updates. Readers stay lock-free.
+- FTS resilience: index connections set a busy timeout instead of
+  failing instantly on a concurrent writer, and the query path detects
+  a silently stale index (row count drifted from the record files) and
+  rebuilds it from the source of truth.
+- Prompt governance: the evidence-brief system prompt is registered
+  with a version like every other template; checkpoints and sanitized
+  run reports record `prompt_versions`, and evaluation reports carry
+  them for attribution (`report_version` 3).
+- Schema-repair round: a final answer failing local schema validation
+  goes back to the model exactly once with the validation error before
+  the workflow pauses; a second invalid answer still pauses.
+- Governance files: SECURITY.md (threat model + disclosure policy) and
+  a Contributor Covenant CODE_OF_CONDUCT.md; CI uploads coverage to
+  Codecov.
+
+### Fixed
+
+- README's hardcoded test-count badge showed a stale number (the CI
+  badge is authoritative); CHANGELOG compare links pointed at a
+  non-existent organization and version tags were incomplete.
+- Packaging classifiers claimed Python 3.11 support, which the CI
+  matrix never tested.
+
 ## [0.7.0] - 2026-09-11
 
 Workbench milestone (M6): the evidence-brief workflow, its evaluation
@@ -206,10 +243,12 @@ First public foundation release (Milestone 0).
 - CI workflow (GitHub Actions: ruff + pytest on Python 3.10-3.13,
   Ubuntu + Windows).
 
-[Unreleased]: https://github.com/experienceos/experienceos/compare/v0.6.0...HEAD
-[0.6.0]: https://github.com/experienceos/experienceos/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/experienceos/experienceos/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/experienceos/experienceos/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/experienceos/experienceos/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/experienceos/experienceos/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/experienceos/experienceos/releases/tag/v0.1.0
+[Unreleased]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.0...v0.7.1
+[0.7.0]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/guomengjia618-dot/ExperienceOS/releases/tag/v0.1.0
