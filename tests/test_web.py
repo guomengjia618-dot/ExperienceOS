@@ -308,3 +308,60 @@ def test_mutating_endpoints_require_workbench_header(http_workbench):
     )
     assert status == 404
     # exporting an empty selection is a friendly 400, not a crash
+
+
+def test_model_picker_switches_config_and_validates(http_workbench):
+    bench, base = http_workbench
+    # suggestions come from the configured provider family, current model included
+    status, _, body = request(base, "/api/config")
+    config = json.loads(body)
+    assert config["model"] in config["model_options"]
+
+    status, _, body = request(base, "/api/model", {"model": "glm-4.6-air"})
+    assert status == 200 and json.loads(body)["model"] == "glm-4.6-air"
+    assert bench.configuration()["model"] == "glm-4.6-air"  # persisted to config.toml
+    status, _, body = request(base, "/api/config")
+    assert "glm-4.6-air" in json.loads(body)["model_options"]
+
+    # invalid names are rejected and change nothing
+    for bad in ("", "bad model with spaces", "x" * 101, {"model": 1}):
+        status, _, _ = request(base, "/api/model", bad)
+        assert status == 400
+    assert bench.configuration()["model"] == "glm-4.6-air"
+
+
+def test_pause_reason_speaks_plainly_for_transport_errors(
+    tmp_path, monkeypatch
+):
+    from experienceos.ai.provider import LLMProvider
+    from experienceos.core.errors import AIProviderError
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    class FlakyProvider(LLMProvider):
+        name = "flaky"
+
+        @property
+        def model(self):
+            return "flaky-1"
+
+        def generate(self, messages, **kwargs):
+            raise AIProviderError(
+                "request to https://example/api failed: refused",
+                metadata={"error_type": "network", "retry_count": 3},
+            )
+
+        def complete(self, messages):
+            return ""
+
+    monkeypatch.setattr(
+        "experienceos.web.server.create_provider", lambda config: FlakyProvider()
+    )
+    bench = Workbench(tmp_path, demo_delay=0)
+    ExperienceStore(tmp_path).save(
+        Experience.new(title="Seed", type="personal", period={"start": "2024-01"})
+    )
+    view = finish(bench, bench.start(StartRequest(mode="live", question="hi"))["id"])
+    assert view["status"] == "paused"
+    assert "连不上模型接口" in view["error"]
+    assert "refused" not in view["error"]  # raw provider text stays off the wire

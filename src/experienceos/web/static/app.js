@@ -54,6 +54,11 @@ async function changeMode(next, preserveRun = false) {
   $("mode-live").setAttribute("aria-pressed", String(mode === "live"));
   $("failure-option").hidden = mode !== "demo"; $("model-label").hidden = mode !== "live";
   $("library-tools").hidden = mode !== "live";
+  if (mode === "live") {
+    const select = $("model-select");
+    select.innerHTML = config.model_options.map(m=>`<option value="${esc(m)}"${m===config.model?" selected":""}>${esc(m)}</option>`).join("");
+    select.disabled = busy;
+  }
   $("question").value = mode === "demo" ? config.demo_question : "哪些项目最能体现我的后端能力？请列出成果、引用来源和证据缺口。";
   $("mode-note").textContent = mode === "demo" ? "示例数据" : config.live_ready ? config.model : `缺少 ${config.api_key_env}`;
   $("model-label").textContent = config.model;
@@ -336,6 +341,17 @@ $("delete-record").addEventListener("click",async()=>{
 });
 $("export-md").addEventListener("click",()=>exportAs("markdown"));
 $("export-html").addEventListener("click",()=>exportAs("html"));
+$("model-select").addEventListener("change",async event=>{
+  const model = event.target.value;
+  clearError();
+  try {
+    config = await api("/api/model",{model});
+    $("mode-note").textContent = config.live_ready ? config.model : `缺少 ${config.api_key_env}`;
+  } catch (error) {
+    showError(error);
+    event.target.value = config.model;
+  }
+});
 
 async function initialize() {
   setBusy(true);

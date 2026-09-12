@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-09-12
+
+The workbench tells the truth about pauses and lets you switch models
+without touching a config file.
+
+### Added
+
+- Model picker: a dropdown next to 运行 lists same-family models for the
+  configured endpoint (GLM / DeepSeek / OpenAI / Moonshot / Qwen hosts
+  detected from base_url) and persists the choice to config.toml via
+  POST /api/model.
+- Plain-language pause reasons: the run panel now says *why* a run
+  paused — network refused, timeout, rate limit, provider 5xx, or
+  unparseable model output — classified from the retry layer's
+  operational metadata, with raw provider text still kept off the wire.
+  The answer to "why did it pause" is no longer a generic message.
+
 ## [0.7.4] - 2026-09-12
 
 The workbench grows its management surface: records can now be created,
@@ -308,7 +325,8 @@ First public foundation release (Milestone 0).
 - CI workflow (GitHub Actions: ruff + pytest on Python 3.10-3.13,
   Ubuntu + Windows).
 
-[Unreleased]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.4...HEAD
+[Unreleased]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.5...HEAD
+[0.7.5]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.4...v0.7.5
 [0.7.4]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.3...v0.7.4
 [0.7.3]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/guomengjia618-dot/ExperienceOS/compare/v0.7.1...v0.7.2

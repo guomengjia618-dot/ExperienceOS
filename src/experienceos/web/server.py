@@ -21,8 +21,13 @@ from experienceos.ai.factory import create_provider
 from experienceos.ai.reporting import build_run_report, save_run_report
 from experienceos.ai.tools import ExperienceToolRegistry
 from experienceos.ai.workflow import EvidenceBriefWorkflow, WorkflowCheckpointStore, WorkflowState
-from experienceos.config import load_config
-from experienceos.core.errors import ExperienceOSError, ExportError, NotFoundError
+from experienceos.config import load_config, save_config
+from experienceos.core.errors import (
+    AIProviderError,
+    ExperienceOSError,
+    ExportError,
+    NotFoundError,
+)
 from experienceos.core.models import UNDATED_START, Experience, utcnow
 from experienceos.core.ulid import new_ulid
 from experienceos.exporters import default_exporter_registry
@@ -31,11 +36,37 @@ from experienceos.storage import ExperienceStore
 from experienceos.web.demo import DEMO_QUESTION, WorkbenchDemoProvider, seed_demo
 
 _RUN_ID = re.compile(r"^run_[0-9A-HJKMNP-TV-Z]{26}$")
+_MODEL = re.compile(r"^[A-Za-z0-9._/\-:]{1,100}$")
 _STATIC = Path(__file__).parent / "static"
 _MIME_BY_SUFFIX = {
     ".md": "text/markdown; charset=utf-8",
     ".html": "text/html; charset=utf-8",
     ".json": "application/json; charset=utf-8",
+}
+# Same-family suggestions for the model picker; the host of the configured
+# base_url decides which family applies. Always merged with the current model.
+_SUGGESTED_MODELS = {
+    "bigmodel.cn": ["glm-4.7", "glm-4.6-air", "glm-4-plus", "glm-4.5-air"],
+    "deepseek.com": ["deepseek-chat", "deepseek-reasoner"],
+    "openai.com": ["gpt-4o-mini", "gpt-4o"],
+    "moonshot.cn": ["moonshot-v1-8k", "moonshot-v1-32k"],
+    "dashscope.aliyuncs.com": ["qwen-plus", "qwen-max"],
+}
+# Transport error classification -> a plain-language pause reason. These
+# strings are operational metadata from the retry layer, never model content.
+_PAUSE_REASONS = {
+    "network": (
+        "连不上模型接口（网络被拒绝或中断），已自动重试仍未成功。"
+        "网络恢复后点「继续运行」，将从断点接着跑，已完成的步骤不会重来。"
+    ),
+    "timeout": "模型接口响应超时，已自动重试仍未成功。稍后点「继续运行」从断点接着跑。",
+    "rate_limit": "模型接口限流（请求太频繁或额度用尽），稍等片刻再点「继续运行」。",
+    "server_error": "模型服务暂时故障（服务端 5xx），稍后点「继续运行」。",
+    "invalid_json": (
+        "模型返回了无法解析的内容，且修复重试后仍未通过校验。"
+        "换一个模型或换个问法再试。"
+    ),
+    "http_error": "模型接口拒绝了请求（鉴权或参数问题），请检查 key 与配置后重试。",
 }
 
 
@@ -239,13 +270,32 @@ class Workbench:
 
     def configuration(self) -> dict[str, Any]:
         config = load_config(self.home).ai
+        host = urlsplit(config.base_url).hostname or ""
+        suggestions = next(
+            (
+                models
+                for domain, models in _SUGGESTED_MODELS.items()
+                if domain in host
+            ),
+            [],
+        )
         return {
             "model": config.model,
             "provider": config.provider,
+            "model_options": sorted({config.model, *suggestions}),
             "live_ready": bool(os.environ.get(config.api_key_env)),
             "api_key_env": config.api_key_env,
             "demo_question": DEMO_QUESTION,
         }
+
+    def set_model(self, model: str) -> dict[str, Any]:
+        """Switch the live model and persist it to config.toml."""
+        if not _MODEL.fullmatch(model or ""):
+            raise RequestError("模型名不合法：只允许字母、数字和 . _ / - :。")
+        config = load_config(self.home)
+        config.ai.model = model
+        save_config(self.home, config)
+        return self.configuration()
 
     def _path(self, run_id: str) -> Path:
         if not _RUN_ID.fullmatch(run_id):
@@ -338,11 +388,21 @@ class Workbench:
                 workflow.resume(run["workflow_id"]) if resume else workflow.start(run["question"])
             )
             save_run_report(state, store.root / "reports" / f"{state.workflow_id}.json")
-        except Exception:
-            # Provider exceptions may contain private content. Keep raw errors off the web API.
+        except Exception as exc:
+            # Model-content errors must stay off the wire; transport errors
+            # are operational metadata and get a plain-language reason. The
+            # workflow wraps provider failures, so walk the cause chain.
+            reason = None
+            candidate: BaseException | None = exc
+            while candidate is not None and reason is None:
+                if isinstance(candidate, AIProviderError) and isinstance(
+                    candidate.metadata, dict
+                ):
+                    reason = _PAUSE_REASONS.get(str(candidate.metadata.get("error_type")))
+                candidate = candidate.__cause__ or candidate.__context__
             with self.lock:
                 run["status"] = "paused"
-                run["error"] = (
+                run["error"] = reason or (
                     "演示已在工具读取后中断。点击继续运行，将从保存的进度接着完成。"
                     if run["mode"] == "demo" and run["simulate_failure"] and not resume
                     else "运行中断。请检查模型配置、网络或本地记录，再从已保存的进度继续。"
@@ -509,6 +569,10 @@ def make_server(workbench: Workbench, port: int = 8765) -> ThreadingHTTPServer:
                     )
                     self._json(result, 201)
                     return
+                if path == "/api/model":
+                    if data.keys() != {"model"} or not isinstance(data["model"], str):
+                        raise RequestError("需要 model 字段。", 400)
+                    return self._json(workbench.set_model(data["model"]))
                 if path.startswith("/api/experiences/") and path.endswith("/status"):
                     if data.keys() != {"status"} or data["status"] not in {
                         "draft",
